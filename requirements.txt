@@ -1,12 +1,16 @@
-numpy>=1.26
-scipy>=1.11
-pandas>=2.0
-pyarrow>=14.0
-matplotlib>=3.8
+# Exact pins. scipy in particular MUST be pinned, not floored: scipy 1.16.0
+# changed the default x_scale for method='lm' from 1.0 to 'jac', which silently
+# changes how every second-pass fit in magic.py behaves. A >= floor spanning
+# that version makes results non-reproducible. See DECISIONS.md.
+numpy==2.5.2
+scipy==1.18.1
+pandas==3.0.5
+pyarrow==25.0.1
+matplotlib==3.11.1
 
-# Neural parameter-estimation work
-torch>=2.2
+# Neural parameter-estimation work (Task 2)
+torch==2.13.0
 
-# Optional: earlier GP residual work
-scikit-learn>=1.3
-joblib>=1.3
+# Optional: earlier GP residual work, not used by the current pipeline
+# scikit-learn>=1.3
+# joblib>=1.3

@@ -12,6 +12,7 @@ outputs/
 plots/
 *.joblib
 *.pt
+*.bak
 
 # Editors / OS
 .vscode/
