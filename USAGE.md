@@ -22,11 +22,24 @@ F_x = tp.longitudinal_force(F_z=800, slip_ratio=0.1,
 F_x, F_y = tp.combined_force(F_z=800, slip_angle_deg=3, slip_ratio=0.1,
                              camber_deg=0, tire="18.0X6.0-10 R20 6.0")
 
+# overturning moment (pure slip — takes no slip ratio)
+M_x = tp.overturning_moment(F_z=800, slip_angle_deg=5, camber_deg=2,
+                            tire="20.5X7.0-13 R20 7.0")      # 11.9 N·m
+
+# ...and with inflation pressure, which matters a lot for M_x
+M_x = tp.overturning_moment(F_z=800, slip_angle_deg=5, camber_deg=2,
+                            tire="20.5X7.0-13 R20 7.0",
+                            pressure_kpa=55)                 # 18.3 N·m at 8 psi
+
 # raw parameters, e.g. to hand to another tool
 tp.get_params("16.0X7.5-10 R20 7.0", family="lateral")
+tp.get_params("16.0X7.5-10 R20 7.0", family="mx")
 ```
 
 All inputs accept numpy arrays, so you can vectorise over a whole lap.
+
+`overturning_moment` is available for **all six tires**, including the two
+16.0X7.5-10 specs that have no combined-slip data.
 
 ## Units and signs
 
@@ -48,6 +61,23 @@ was fitted to:
 | longitudinal | 6.1 – 7.9% | usable |
 | G_x (combined) | 8.2 – 8.8% | usable |
 | G_y (combined) | 10.0 – 18.3% | weakest |
+
+`M_x` is scored differently, and better: **held-out** error, GroupKFold by
+segment, so it is not measured on the data it was fitted to. The force
+families above are in-sample fit quality and are not directly comparable.
+
+| M_x | held-out, % of p95 abs M_x |
+|---|---|
+| without `pressure_kpa` | 10.1% mean (9.2 – 10.9) |
+| with `pressure_kpa` | 8.2% mean (5.5 – 10.8) |
+
+Inflation pressure matters more for `M_x` than tire size does. The
+lateral-force coefficient falls about 35% from 8 to 14 psi, consistently in
+every tire measured, so pass `pressure_kpa` if you know it. Omitting it gives
+the model as `magic.py` defines it, valid near the ~83 kPa (12 psi) test
+pressure.
+
+There is no `M_z` yet, and no `M_y` at all — the TTC files carry no MY channel.
 
 Per tire, worst first:
 
@@ -111,7 +141,18 @@ temperature or pressure dependence.
 python tire_predict.py
 ```
 
-Checks the embedded functions reproduce `magic.py` exactly. Currently
+Checks the embedded force functions reproduce `magic.py` exactly. Currently
 `0.000e+00` relative difference. Run it after any change.
+
+```
+python verify_mx.py
+```
+
+The equivalent gate for `M_x`. `run_mx` solves a linear system instead of
+iterating on `magic.fit_MX`, because that residual is linear in its three
+parameters. This proves the substitution is sound, per tire: `magic.fit_MX`'s
+own residual at the solution matches the linear system (~1e-14), and driving
+`least_squares` on `magic.fit_MX` from a neutral seed lands on the same
+parameters (~1e-13). All 6 tires pass.
 
 Supersedes `tire_model.py`, whose parameters are the stale 20-parameter form.

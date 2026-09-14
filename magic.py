@@ -1768,9 +1768,15 @@ def fit_MX(data, x, lat_params, gy_params):
         F_y = Y * G_y
         
         # COMPUTE THE MAGIC OVERTURING MOMENT
-        residuals = np.vstack((residuals, (F_z * R_0 * (QSX1 - QSX2 * gamma + QSX3 * F_y / F_z0) - M_x).squeeze()))
-        
-    
+        # NOTE: was np.vstack. Each element is .squeeze()'d to 1-D here, so
+        # vstack treats them as ROWS and demands every segment be the same
+        # length -- it raised for all 6 tires (segment lengths run 1037-1049).
+        # The second passes get away with np.vstack because they stack
+        # un-squeezed (n,1) columns. concatenate is what this accumulation
+        # meant, and it leaves the 1-D shape least_squares requires.
+        residuals = np.concatenate((residuals, (F_z * R_0 * (QSX1 - QSX2 * gamma + QSX3 * F_y / F_z0) - M_x).squeeze()))
+
+
     return residuals.squeeze()
 
 
@@ -1824,7 +1830,10 @@ def fit_MY(data, x, long_params, gx_params):
         F_x = Y * G_x
         
         # COMPUTE THE MAGIC OVERTURING MOMENT
-        residuals = np.vstack((residuals, (-F_z * R_0 * (QSY1 * np.arctan(v_r / v_0) + QSY2 * F_x / F_z0) - M_y).squeeze()))
+        # NOTE: was np.vstack, same 1-D-rows defect as fit_MX above. Fixed for
+        # consistency only -- fit_MY stays dead, there is no MY channel in any
+        # file (owner confirmed; verified by inspection of both directories).
+        residuals = np.concatenate((residuals, (-F_z * R_0 * (QSY1 * np.arctan(v_r / v_0) + QSY2 * F_x / F_z0) - M_y).squeeze()))
         
     
     return residuals.squeeze()

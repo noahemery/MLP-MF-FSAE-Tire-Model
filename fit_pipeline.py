@@ -25,6 +25,7 @@ from magic import (
     first_pass_x, second_pass_x,
     first_pass_GX, second_pass_GX,
     first_pass_GY, second_pass_GY,
+    tm_lat,                      # MX needs F_y; see _mx_columns
 )
 
 # Deterministic evaluation cap for the second passes. See progress.install().
@@ -285,8 +286,70 @@ GY_SPECS = tuple(
                       ("180X60_R20_60", 1555), ("180X60_R20_70", 1602))
 )
 
+# ---------------------------------------------------------------------------
+# Overturning moment, MX.
+#
+# magic.py has NO fitting block for any moment -- fit_MX is defined and never
+# called, and no x0 seed or bound exists for it anywhere. The two specs below
+# are therefore NOT transcribed from magic.py; they are new, written 2026-09-14
+# under the owner's authorisation to fix the moment code as needed. block_line
+# is None to say so, and audit_literals.py skips them for that reason.
+#
+# Three facts make this family much cheaper than the force families:
+#
+# 1. fit_MX's residual is LINEAR in QSX1/QSX2/QSX3, so np.linalg.lstsq gives
+#    the global optimum outright. No seed, no bounds, no convergence question.
+#    least_squares is still run, from the closed-form point, purely so the
+#    worker gets a real scipy result with a real Jacobian for the diagnostics
+#    -- it terminates in single-digit evaluations.
+#
+# 2. MX reuses the LATERAL segmentation exactly, so there are no new
+#    segmentation literals. The spec just names the lateral spec it borrows.
+#
+# 3. MX needs gy_params only through F_y = Y * G_y, and on cornering data SL is
+#    identically 0, where G_y is identically 1 (u = B*(s + S_h) collapses to
+#    u0, so the ratio is 1 for ANY R-params). So MX covers all 6 tires, not
+#    just the 4 with straight-line data. run_mx asserts both facts rather than
+#    trusting them.
+MX_P_NOM = 82.7          # kPa, ~12 psi, the modal TTC Round 9 set point
+MX_P_MIN = 1.0           # P is gated to exactly 0.0 in places, like SL
+
+
+@dataclass(frozen=True)
+class MXSpec:
+    spec_id: str
+    depends_on: str        # the lat_* spec supplying params, diameter and F_z0
+    lat_source: str        # the lat_* spec supplying the segmentation
+    family: str            # 'mx' (canonical) or 'mxp' (pressure-extended)
+    block_line: int = None       # None: not transcribed from magic.py
+    diameter_in: float = None
+
+
+_MX_TIRES = ("160X75_R20_70", "160X75_R20_80", "205X70_R20_70",
+             "205X70_R20_80", "180X60_R20_60", "180X60_R20_70")
+
+MX_SPECS = tuple(
+    MXSpec(spec_id="MX_" + tag, depends_on="lat_" + tag,
+           lat_source="lat_" + tag, family="mx")
+    for tag in _MX_TIRES
+)
+
+# Pressure-extended variant. This is an EXTENSION, not magic.py's model, and it
+# is kept out of magic.py deliberately -- the owner owns that file's physics.
+# Each of the three terms gains a linear pressure coefficient, which is what
+# MF 6.x does:
+#   M_x = F_z*R_0*[ (QSX1 + QSX1p*dpi) - (QSX2 + QSX2p*dpi)*gamma
+#                  +(QSX3 + QSX3p*dpi)*F_y/F_z0 ],  dpi = (P - P_nom)/P_nom
+# Still linear, so still a closed-form solve.
+MXP_SPECS = tuple(
+    MXSpec(spec_id="MXP_" + tag, depends_on="lat_" + tag,
+           lat_source="lat_" + tag, family="mxp")
+    for tag in _MX_TIRES
+)
+
 ALL_SPECS = {s.spec_id: s for s in
-             LATERAL_SPECS + LONGITUDINAL_SPECS + GX_SPECS + GY_SPECS}
+             LATERAL_SPECS + LONGITUDINAL_SPECS + GX_SPECS + GY_SPECS
+             + MX_SPECS + MXP_SPECS}
 
 # Parameter names in magic.py's own unpack order.
 #   lateral      second_pass_y:255-276  + trailing F_z0 from the hstack
@@ -310,12 +373,20 @@ PARAM_NAMES = {
     "gx": ["RBX1", "RBX2", "RBX3", "RCX1", "REX1", "REX2", "RHX1"],
     "gy": ["RBY1", "RBY2", "RBY3", "RBY4", "RCY1", "REY1", "REY2", "RHY1",
            "RHY2", "RVY1", "RVY2", "RVY3", "RVY4", "RVY5", "RVY6"],
+    # fit_MX:1735-1737. diameter and F_z0 carried in the same layout as the
+    # pure-slip families so tire_predict can read R_0 and F_z0 off the vector.
+    "mx": ["QSX1", "QSX2", "QSX3", "diameter_in", "F_z0"],
+    # Extension, not magic.py's model. The *p entries are the linear pressure
+    # coefficients; P_nom is metadata, not fitted.
+    "mxp": ["QSX1", "QSX2", "QSX3", "QSX1p", "QSX2p", "QSX3p",
+            "diameter_in", "F_z0", "P_nom"],
 }
 
 
 # Fitted-parameter count per family, i.e. what least_squares actually solves
 # for. Everything after this in a stored vector is metadata (diameter, F_z0).
-N_FITTED = {"lateral": 22, "longitudinal": 14, "gx": 7, "gy": 15}
+N_FITTED = {"lateral": 22, "longitudinal": 14, "gx": 7, "gy": 15,
+            "mx": 3, "mxp": 6}
 
 
 def strip_geometry(vector, family):
@@ -331,6 +402,10 @@ def strip_geometry(vector, family):
     n = N_FITTED[family]
     if family in ("gx", "gy"):
         return v[:n]
+    if family == "mx":
+        return _np.concatenate([v[:n], v[-1:]])          # [.., diameter, F_z0]
+    if family == "mxp":
+        return _np.concatenate([v[:n], v[-2:-1]])        # trailing P_nom skipped
     return _np.concatenate([v[:n], v[-1:]])
 
 
@@ -548,8 +623,96 @@ def run_gy(spec, lat_params):
     return result.x, result, cases, F_z0
 
 
+def _mx_columns(cases, lat_params, with_pressure):
+    """Design matrix for fit_MX, which is linear in QSX1/QSX2/QSX3.
+
+    Returns (A, y, groups). groups is the segment index per row, so held-out
+    error can be scored by GroupKFold without re-deriving the segmentation.
+    """
+    F_z0 = lat_params[-1]
+    R_0 = lat_params[-2] * 0.5 * 0.0254          # in -> m, as fit_MX:1740
+    core = strip_geometry(lat_params, "lateral")
+
+    A_all, y_all, g_all = [], [], []
+    for gi, case in enumerate(cases):
+        F_z = -np.asarray(case["FZ"]).ravel()
+        gamma = np.sin(np.asarray(case["IA"]).ravel() * np.pi / 180)
+        alpha = np.tan(np.asarray(case["SA"]).ravel() * np.pi / 180)
+        M_x = np.asarray(case["MX"]).ravel()
+        P = np.asarray(case["P"]).ravel()
+
+        # G_y is identically 1 here (asserted by the caller), so F_y is the
+        # bare tm_lat output and no gy_params are needed.
+        F_y = tm_lat(F_z, alpha, gamma, 1, core)[0].ravel()
+
+        A = np.column_stack([F_z * R_0,
+                             -F_z * R_0 * gamma,
+                             F_z * R_0 * F_y / F_z0])
+        keep = np.ones(len(M_x), dtype=bool)
+        if with_pressure:
+            keep = P > MX_P_MIN          # P is gated to 0.0 in places, like SL
+            dpi = (P - MX_P_NOM) / MX_P_NOM
+            A = np.column_stack([A, A * dpi[:, None]])
+        A_all.append(A[keep])
+        y_all.append(M_x[keep])
+        g_all.append(np.full(int(keep.sum()), gi))
+
+    return (np.vstack(A_all), np.concatenate(y_all), np.concatenate(g_all))
+
+
+def _assert_pure_slip(cases, spec_id):
+    """MX's independence from gy_params rests on SL being identically 0."""
+    sl = np.concatenate([np.asarray(c["SL"]).ravel() for c in cases])
+    worst = float(np.abs(sl).max())
+    if worst != 0.0:
+        raise RuntimeError(
+            spec_id + ": SL is not identically 0 (max|SL| = " + repr(worst) +
+            "). G_y is only identically 1 at SL == 0, so this fit would "
+            "silently depend on gy_params. Refusing to proceed.")
+
+
+def _run_mx_family(spec, lat_params, with_pressure):
+    lat_spec = ALL_SPECS[spec.lat_source]
+    cases = build_cases_lateral(lat_spec)
+    _assert_pure_slip(cases, spec.spec_id)
+
+    A, y, groups = _mx_columns(cases, lat_params, with_pressure)
+
+    # Closed form: the residual is linear, so this IS the global optimum.
+    beta, *_ = np.linalg.lstsq(A, y, rcond=None)
+
+    # Re-run through least_squares from that point so the worker gets a real
+    # scipy result -- status, Jacobian, optimality, parameter covariance. It
+    # starts at the optimum, so it terminates in single-digit evaluations.
+    result = least_squares(lambda x: A @ x - y, beta, jac=lambda x: A,
+                           method='lm', ftol=TOL, xtol=TOL, gtol=TOL,
+                           max_nfev=MAX_NFEV, verbose=VERBOSE)
+
+    tail = [lat_params[-2], lat_params[-1]]
+    if with_pressure:
+        tail.append(MX_P_NOM)
+    return (np.hstack((result.x, tail)), result, cases, float(lat_params[-1]))
+
+
+def run_mx(spec, lat_params):
+    """Canonical MX -- exactly fit_MX's model, 3 parameters.
+
+    Equivalence to magic.fit_MX is proven by verify_mx.py, which checks that
+    magic.fit_MX's own residual at this solution matches the linear system and
+    that least_squares on magic.fit_MX from a neutral seed lands on the same
+    point. It is not re-checked per run because fit_MX evaluates tm_lat and GY
+    over every row on every call.
+    """
+    return _run_mx_family(spec, lat_params, with_pressure=False)
+
+
+def run_mxp(spec, lat_params):
+    """Pressure-extended MX. An EXTENSION, not magic.py's model."""
+    return _run_mx_family(spec, lat_params, with_pressure=True)
+
+
 def run_spec(spec, source_vector=None):
-    """Dispatch. source_vector is the long_*/lat_* vector for G_x/G_y."""
+    """Dispatch. source_vector is the long_*/lat_* vector for G_x/G_y/MX."""
     if spec.family == "lateral":
         return run_lateral(spec)
     if spec.family == "longitudinal":
@@ -558,4 +721,8 @@ def run_spec(spec, source_vector=None):
         return run_gx(spec, source_vector)
     if spec.family == "gy":
         return run_gy(spec, source_vector)
+    if spec.family == "mx":
+        return run_mx(spec, source_vector)
+    if spec.family == "mxp":
+        return run_mxp(spec, source_vector)
     raise ValueError("unknown family: " + str(spec.family))

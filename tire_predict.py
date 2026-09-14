@@ -22,6 +22,14 @@ fitted to:
     G_x combined   8.2 - 8.8%     usable
     G_y combined  10.0 - 18.3%    weakest, see below
 
+M_x (overturning_moment) is reported differently, because it is cheap enough
+to score properly: HELD-OUT error, GroupKFold by segment, as a percentage of
+95th-percentile |M_x|. It averages 10.1% across the six tires, or 8.2% if
+pressure_kpa is supplied. All six tires are covered, including both
+16.0X7.5-10 specs, which have no combined-slip data.
+
+There is no M_z yet, and no M_y at all -- the TTC files carry no MY channel.
+
 GY_180X60_R20_60 is the worst fit at 18.3%. Its straight-line runs only swept
 slip angle from -6 to -3 degrees, so the G_y parameters there are poorly
 constrained. Calling combined_force on that tire emits a warning.
@@ -51,12 +59,13 @@ import warnings
 import numpy as np
 
 __all__ = ["get_params", "lateral_force", "longitudinal_force",
-           "combined_force", "available_tires"]
+           "combined_force", "overturning_moment", "available_tires"]
 
 # Number of fitted parameters per family. Stored vectors carry trailing
 # metadata after this: [params..., diameter_in, F_z0] for the pure-slip
 # families, bare params for the G families.
-N_FITTED = {"lateral": 22, "longitudinal": 14, "gx": 7, "gy": 15}
+N_FITTED = {"lateral": 22, "longitudinal": 14, "gx": 7, "gy": 15,
+            "mx": 3, "mxp": 6}
 
 # Fits with a known weakness, warned about at call time.
 LOW_CONFIDENCE = {
@@ -76,6 +85,9 @@ PARAM_NAMES = {
     "gx": ["RBX1", "RBX2", "RBX3", "RCX1", "REX1", "REX2", "RHX1"],
     "gy": ["RBY1", "RBY2", "RBY3", "RBY4", "RCY1", "REY1", "REY2", "RHY1",
            "RHY2", "RVY1", "RVY2", "RVY3", "RVY4", "RVY5", "RVY6"],
+    "mx": ["QSX1", "QSX2", "QSX3", "diameter_in", "F_z0"],
+    "mxp": ["QSX1", "QSX2", "QSX3", "QSX1p", "QSX2p", "QSX3p",
+            "diameter_in", "F_z0", "P_nom"],
 }
 
 PER_TIRE = {
@@ -173,6 +185,48 @@ PER_TIRE = {
         -0.00076937590111244268, -0.26404546007064433, -0.0010664666598914328, -0.0010117365962322897,
         0.50598408578129839, -0.30822402281148781, -0.093029608109662085, -0.0041430959092638294,
         0.071278296010994474, -0.0050501748300704275, 20.5, 816.5304698104751],
+    "MX_160X75_R20_70": [
+        -0.02770012050269322, 1.652490324067806, 0.05584257152735489, 16.0,
+        740.5945995727943],
+    "MX_160X75_R20_80": [
+        -0.022115523736468527, 1.8817858591635122, 0.05316151119711262, 16.0,
+        733.2824724106788],
+    "MX_205X70_R20_70": [
+        -0.024095702807115208, 1.0679677093612496, 0.05433130248089002, 20.5,
+        875.3259495498389],
+    "MX_205X70_R20_80": [
+        -0.017846300766866628, 1.1136459328445452, 0.051717757477973025,
+        20.5, 875.6098245411248],
+    "MX_180X60_R20_60": [
+        -0.020589715739214743, 1.1749100234015515, 0.06351418673556386, 18.0,
+        729.0681149040704],
+    "MX_180X60_R20_70": [
+        -0.023317475882588725, 1.3998084501714587, 0.06354647084757328, 18.0,
+        731.3452597266489],
+    "MXP_160X75_R20_70": [
+        -0.027554042861839607, 1.7077814708239276, 0.053423309476122616,
+        0.006594072663491879, 0.8811975836148145, -0.04673988022237524, 16.0,
+        740.5945995727943, 82.7],
+    "MXP_160X75_R20_80": [
+        -0.022093485679940628, 1.9325244178591734, 0.05087592062449334,
+        -0.002437371199367496, 0.6795185596857604, -0.051908618748560446,
+        16.0, 733.2824724106788, 82.7],
+    "MXP_205X70_R20_70": [
+        -0.02428884472732418, 1.090288128972769, 0.05086537911816846,
+        -0.0020840231171920243, 0.32433008106628414, -0.04738844860017341,
+        20.5, 875.3259495498389, 82.7],
+    "MXP_205X70_R20_80": [
+        -0.0177769099956056, 1.1506968896528595, 0.048583536932951366,
+        -0.00031025911406085127, 0.5361847845335714, -0.0518950009820459,
+        20.5, 875.6098245411248, 82.7],
+    "MXP_180X60_R20_60": [
+        -0.02050067896107664, 1.2045257238142122, 0.06301666373242629,
+        0.04980006151633568, 1.2222438494211487, -0.034346040610581725, 18.0,
+        729.0681149040704, 82.7],
+    "MXP_180X60_R20_70": [
+        -0.022443911332154984, 1.450339343477759, 0.06196068757721536,
+        0.025062363846840387, 0.9292061657052324, -0.04136573915331362, 18.0,
+        731.3452597266489, 82.7],
 }
 
 POOLED = {
@@ -196,6 +250,17 @@ POOLED = {
         12.066991260934529, -0.33284637426966074, -0.0011432866227540641, -0.00016842867093082574,
         0.54956364204339425, -0.62377466810403059, 0.20171322485397314, -0.0027634238477388866,
         0.023774178722266011, 0.0074797667652471839],
+    # MX pooled sets are a single fit over all six tires' data stacked
+    # together, not an average of the six parameter vectors. diameter_in and
+    # F_z0 here are the means across tires and are only sensible as a rough
+    # stand-in for an unmeasured tire.
+    "mx": [
+        -0.02256515575588318, 1.2883909520435888, 0.05598792071864844,
+        18.166666666666668, 780.8710367841927],
+    "mxp": [
+        -0.02207439014630916, 1.3343150872503409, 0.05361239365757853,
+        0.01008741972902183, 0.7030905783201131, -0.044267543721476094,
+        18.166666666666668, 780.8710367841927, 82.7],
 }
 
 TIRE_INDEX = {
@@ -221,7 +286,8 @@ def _resolve(tire, family, allow_fallback):
     """Return (parameter vector, spec_id or None) for one tire and family."""
     if tire in TIRE_INDEX:
         prefix = {"lateral": "lat_", "longitudinal": "long_",
-                  "gx": "GX_", "gy": "GY_"}[family]
+                  "gx": "GX_", "gy": "GY_",
+                  "mx": "MX_", "mxp": "MXP_"}[family]
         spec_id = prefix + TIRE_INDEX[tire]
         if spec_id in PER_TIRE:
             if spec_id in LOW_CONFIDENCE:
@@ -260,6 +326,8 @@ def _core(vector, family):
     v = np.asarray(vector, dtype=float).ravel()
     if family in ("gx", "gy"):
         return v[:n], None
+    if family == "mxp":
+        return v[:n], float(v[-2])      # trailing element is P_nom
     return v[:n], float(v[-1])
 
 
@@ -378,6 +446,44 @@ def combined_force(F_z, slip_angle_deg, slip_ratio, camber_deg=0.0, tire=None,
     G_x = _gx(F_z, F_z0_x, s, alpha, gamma, _core(gxp, "gx")[0])
     G_y, S_vgy = _gy(F_z, F_z0_y, s, alpha, gamma, _core(gyp, "gy")[0], mu_y)
     return F_x0 * G_x, F_y0 * G_y + S_vgy
+
+
+def overturning_moment(F_z, slip_angle_deg, camber_deg=0.0, tire=None,
+                       pressure_kpa=None, allow_fallback=False):
+    """Overturning moment M_x in newton-metres.
+
+    Fitted on pure-slip cornering data, so this is the pure-slip value: it
+    takes no slip ratio. Held-out error, GroupKFold by segment, averages 10.1%
+    of the 95th-percentile |M_x| across tires, or 8.2% with pressure_kpa given.
+
+    pressure_kpa is optional. Omit it and you get the model exactly as
+    magic.py's fit_MX defines it, valid around the ~83 kPa (12 psi) modal test
+    pressure. Pass it and the pressure-extended parameter set is used instead,
+    which tracks a real and consistent effect: the M_x lateral-force
+    coefficient falls about 35% from 8 to 14 psi in every tire measured.
+
+    The pressure-extended form is an EXTENSION, not magic.py's model, and is
+    awaiting the physics owner's review. The default path is unaffected by it.
+    """
+    family = "mx" if pressure_kpa is None else "mxp"
+    v, _ = _resolve(tire, family, allow_fallback)
+    p, F_z0 = _core(v, family)
+    R_0 = float(v[-3] if family == "mxp" else v[-2]) * 0.5 * 0.0254   # in -> m
+
+    F_z = np.asarray(F_z, dtype=float)
+    gamma = np.sin(np.asarray(camber_deg, dtype=float) * np.pi / 180.0)
+    F_y = lateral_force(F_z, slip_angle_deg, camber_deg, tire, allow_fallback)
+
+    if family == "mx":
+        QSX1, QSX2, QSX3 = p
+    else:
+        P_nom = float(v[-1])
+        dpi = (np.asarray(pressure_kpa, dtype=float) - P_nom) / P_nom
+        QSX1 = p[0] + p[3] * dpi
+        QSX2 = p[1] + p[4] * dpi
+        QSX3 = p[2] + p[5] * dpi
+
+    return F_z * R_0 * (QSX1 - QSX2 * gamma + QSX3 * F_y / F_z0)
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,28 @@ fit -- so any difference at all means a literal drifted.
 
 Exit 0 means the refactor reproduces magic.py exactly and the baseline run may
 proceed. Exit 1 means it does not, and the run must not proceed.
+
+*** THIS GATE'S REFERENCE IS STALE AS OF 2026-09-09. READ THIS. ***
+
+The reference in outputs/reference/ was captured from the ORIGINAL magic.py, in
+August, before:
+
+  - William's September magic.py, which appends tire diameter to the pure-slip
+    vectors. The reference lateral vector is 23 long; the current one is 24.
+    That is a structural mismatch, not drift.
+  - the 14 authorised defect fixes, several of which change fitted values
+    (first_pass_GY reading IA instead of SA, the live G-correction penalty,
+    the tm_lat epsilon guard).
+  - the SL == 0 case-selection filter, which changes every straight-run fit.
+
+So the two targets below CANNOT match, and their failure says nothing about
+whether the refactor is faithful. Recapturing the reference needs the two live
+blocks in magic.py un-commented (see comment_out_live_blocks.py --revert) and
+about 25 minutes.
+
+Until then the live guard is audit_literals.py, which parses magic.py's own
+source text and checks every literal in all 18 blocks against the config. It
+does not depend on a stored artifact, so it cannot go stale, and it passes.
 """
 
 import os
@@ -96,7 +118,13 @@ def main():
     if passed:
         print("\nGATE PASSED -- the refactor reproduces magic.py bitwise.")
     else:
-        print("\nGATE FAILED -- do not run the baseline. A literal drifted.")
+        print("\nGATE FAILED.")
+        print("\nBefore reading this as drift: the reference is STALE as of")
+        print("2026-09-09 and cannot match the current magic.py. See this")
+        print("file's docstring. A 23-vs-24 shape mismatch on the lateral")
+        print("vector is the signature of exactly that, and is expected.")
+        print("The live guard is audit_literals.py, which needs no stored")
+        print("artifact and checks all 18 blocks against magic.py's source.")
     print("=" * 78)
     return 0 if passed else 1
 

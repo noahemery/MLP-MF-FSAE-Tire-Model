@@ -224,15 +224,37 @@ def main():
         lines = fh.read().splitlines()
 
     ranges = block_ranges(lines)
-    missing = [s for s in fp.ALL_SPECS if s not in ranges]
+
+    # Specs with block_line=None are NOT transcribed from magic.py -- they are
+    # new blocks written here (the MX family; magic.py has no moment block at
+    # all). There is no source text to diff them against, so they are skipped.
+    # The skip is keyed on block_line rather than on family name so a new
+    # transcribed spec cannot slip past the audit by being unrecognised.
+    audited = {s: sp for s, sp in fp.ALL_SPECS.items()
+               if sp.block_line is not None}
+    skipped = sorted(set(fp.ALL_SPECS) - set(audited))
+
+    missing = [s for s in audited if s not in ranges]
     if missing:
         raise SystemExit("no assignment line found in magic.py for: " +
                          ", ".join(missing))
 
-    failures, checked = [], 0
-    print("auditing " + str(len(ranges)) + " blocks in " + SOURCE + "\n")
+    # A skipped spec that DOES have a block in magic.py means block_line was
+    # left None by mistake and real literals are going unchecked.
+    wrongly_skipped = [s for s in skipped if s in ranges]
+    if wrongly_skipped:
+        raise SystemExit(
+            "these specs have a block in magic.py but block_line=None, so "
+            "they would escape the audit: " + ", ".join(wrongly_skipped))
 
-    for sid, spec in fp.ALL_SPECS.items():
+    failures, checked = [], 0
+    print("auditing " + str(len(audited)) + " blocks in " + SOURCE)
+    if skipped:
+        print("skipping " + str(len(skipped)) + " spec(s) with no magic.py "
+              "block (new blocks, nothing to diff): " + ", ".join(skipped))
+    print()
+
+    for sid, spec in audited.items():
         start, end = ranges[sid]
         got = extract(lines, start, end)
         n0 = len(failures)

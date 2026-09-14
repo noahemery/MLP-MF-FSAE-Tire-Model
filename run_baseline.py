@@ -34,7 +34,8 @@ LOG_DIR = os.path.join("outputs", "logs")
 ARTIFACT_DIR = "outputs"
 
 # Family ordering for launch priority: the deep chains start first.
-_FAMILY_ORDER = {"lateral": 0, "longitudinal": 1, "gx": 2, "gy": 2}
+_FAMILY_ORDER = {"lateral": 0, "longitudinal": 1, "gx": 2, "gy": 2,
+                 "mx": 3, "mxp": 3}
 
 # Caveats attached to the diagnostics table so a number is never read clean.
 CAVEATS = {
@@ -45,6 +46,19 @@ CAVEATS = {
            "(.any() > 1 is always False), so G_x is unconstrained above 1."),
     "longitudinal": ("second_pass_x segment 0 lacks the 1e-8 guard the loop "
                      "body has (magic.py:736 vs :769)."),
+    "mx": ("No fitting block for MX exists in magic.py -- fit_MX is defined "
+           "and never called, with no x0 or bounds anywhere. This block is "
+           "new (2026-09-14), written under the owner's authorisation. The "
+           "residual is linear in QSX1/QSX2/QSX3 so the solution is the "
+           "closed-form global optimum, not an iterative result. Note also "
+           "that fit_MX omits the S_vgy term that first_pass_MX includes; "
+           "immaterial here because S_vgy is 0 at SL == 0, but the two "
+           "functions disagree. Owner to confirm."),
+    "mxp": ("EXTENSION, not magic.py's model: each of fit_MX's three terms "
+            "gains a linear pressure coefficient, as MF 6.x does. Kept out "
+            "of magic.py because the owner owns that file's physics. Pending "
+            "his approval -- treat the canonical 'mx' family as the "
+            "deliverable until then."),
 }
 
 
