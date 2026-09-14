@@ -280,7 +280,9 @@ def main():
                 print("      " + sid)
         print("=" * 62 + "\n")
 
-    assemble(spec_ids)
+    # Always assemble from ALL specs, never just the --only subset,
+    # otherwise a partial run silently truncates the parquet.
+    assemble(list(fp.ALL_SPECS))
     progress.release_hot()
 
 

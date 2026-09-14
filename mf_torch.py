@@ -5,22 +5,10 @@ Nothing is reordered, no sign is changed, no epsilon is added or removed
 beyond the two notes below. verify_mf_torch() checks these against magic.py's
 own numpy functions and is the gate on this file.
 
-Two deliberate deviations, both forced and both already reported to the owner
-in DECISIONS.md:
-
-1. tm_long at magic.py:1063-1067 has trailing commas that make D_x, C_x, B_x,
-   S_hx and E_x into 1-element tuples. numpy silently coerces them back, so
-   the numbers are unaffected; torch raises. The commas are dropped here.
-   This changes no value -- verify_mf_torch() proves it.
-
-2. tm_lat:1027 computes B_y without the `+ 1e-8` guard that
-   second_pass_y:296 has on the same expression. That is transcribed AS IS,
-   guard absent, because it is magic.py's behaviour and CLAUDE.md forbids
-   adding a flag that changes it. It is safe in practice here: F_z = -FZ is
-   the applied load, order 1e3 N across every segment, so the denominator is
-   never near zero for this data. If a NaN ever appears in training, this is
-   the first place to look and it is evidence for the defect, not a licence
-   to patch it.
+This is now a direct transcription with no deviations. The two that used to
+exist -- tm_long's trailing commas and tm_lat's missing 1e-8 guard on B_y --
+were fixed in magic.py itself on 2026-09-09 with the owner's authorisation, so
+there is nothing left to work around. verify_mf_torch() is the gate.
 
 Everything runs in float64. float32 would lose the comparison against numpy
 and these parameters span ~7 orders of magnitude (PKY1 ~ 4.8e3 vs PHY1 ~ 1e-3).
@@ -59,7 +47,7 @@ def tm_lat(F_z, alpha, gamma, lambda_mu_y, x):
 
     D_y = (mu_y * F_z)
     C_y = PCY1
-    B_y = BCD_y / (mu_y * F_z * PCY1)                     # no guard: see note 2
+    B_y = BCD_y / (mu_y * F_z * PCY1 + 1e-8)
     S_hy = ((PHY1 + PHY2 * df_z)
             + (K_y_gamma_0 * gamma - S_vy_gamma) / (BCD_y + 1e-8))
     E_y = ((PEY1 + PEY2 * df_z)
@@ -73,7 +61,12 @@ def tm_lat(F_z, alpha, gamma, lambda_mu_y, x):
 
 
 def tm_long(F_z, s, lambda_mu_x, x):
-    """magic.py:1037-1072, trailing commas dropped (note 1). Returns Y."""
+    """magic.py's tm_long. Returns (Y, BCD_x).
+
+    The trailing commas that made D_x/C_x/B_x/S_hx/E_x 1-tuples are gone --
+    that was fixed in magic.py itself, so this is now a direct transcription
+    rather than a deviation.
+    """
     PDX1, PDX2 = x[0], x[1]
     PCX1 = x[2]
     PKX1, PKX2, PKX3 = x[3], x[4], x[5]
@@ -97,7 +90,7 @@ def tm_long(F_z, s, lambda_mu_x, x):
 
     u = B_x * (s + S_hx)
     Y = D_x * torch.sin(C_x * torch.atan(u - E_x * (u - torch.atan(u)))) + S_vx
-    return Y
+    return Y, BCD_x
 
 
 def GX(F_z, F_z0, s, alpha, gamma, x):
@@ -209,9 +202,10 @@ def verify_mf_torch(n=4000, seed=0, verbose=True):
                            n_lat, t_lat):
         cmp(label, a, b)
 
-    cmp("tm_long.Y",
-        np.asarray(magic.tm_long(F_z, s, 1, lng)).ravel(),
-        tm_long(T(F_z), T(s), 1, T(lng)))
+    n_long = magic.tm_long(F_z, s, 1, lng)
+    t_long = tm_long(T(F_z), T(s), 1, T(lng))
+    cmp("tm_long.Y", n_long[0], t_long[0])
+    cmp("tm_long.BCD_x", n_long[1], t_long[1])
 
     cmp("GX", magic.GX(F_z, F_z0, s, alpha, gamma, gx),
         GX(T(F_z), T(F_z0), T(s), T(alpha), T(gamma), T(gx)))

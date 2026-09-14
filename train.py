@@ -92,8 +92,13 @@ def load_family(family):
             # against, from the NLLS baseline. magic.py passes long_*[-1] as
             # F_z0 for G_x and lat_*[-1] for G_y -- note those come from
             # different run families, which is preserved here.
-            src = np.load(os.path.join("outputs", "specs",
+            import fit_pipeline as _fp
+            raw = np.load(os.path.join("outputs", "specs",
                                        spec.depends_on + ".npy"))
+            # Stored vectors may carry a diameter before F_z0; strip it so
+            # tm_lat/tm_long see F_z0 as the last element.
+            src = _fp.strip_geometry(
+                raw, "longitudinal" if family == "gx" else "lateral")
             rec["source_params"] = src
             rec["F_z0_source"] = float(src[-1])
         out.append(rec)
@@ -105,9 +110,11 @@ def baseline_stats(family):
     import pandas as pd
     import fit_pipeline as fp
 
-    names = [n for n in fp.PARAM_NAMES[family] if n != "F_z0"]
+    # Fitted parameters only: drop the trailing metadata (diameter, F_z0)
+    # that William's vectors carry but the network does not predict.
+    names = fp.PARAM_NAMES[family][:fp.N_FITTED[family]]
     df = pd.read_parquet(BASELINE)
-    df = df[(df.family == family) & (df.param_name != "F_z0")]
+    df = df[(df.family == family) & (df.param_name.isin(names))]
     piv = df.pivot(index="spec_id", columns="param_name", values="value")
     piv = piv[names]
     mean = piv.mean(axis=0).to_numpy()
@@ -124,17 +131,36 @@ def baseline_stats(family):
 # ---------------------------------------------------------------------------
 
 class ParamNet(torch.nn.Module):
-    """geometry -> hidden layers -> raw -> affine -> Magic Formula parameters."""
+    """geometry -> [architecture] -> raw -> affine -> Magic Formula parameters.
+
+    hidden controls capacity, and with 6 training specs capacity is the whole
+    ballgame:
+
+      ()        linear in geometry, ~5 weights per output
+      (32, 32)  MLP, ~2000 weights fitted to 6 points
+      None      'mean' model -- ignores geometry entirely and learns one
+                parameter vector for all tires. This is the null hypothesis:
+                if it wins on leave-one-spec-out, geometry is not learnable
+                from this dataset and that is the finding.
+    """
 
     def __init__(self, n_in, n_params, mean, spread, hidden=(32, 32), seed=0):
         super().__init__()
         torch.manual_seed(seed)
-        layers, prev = [], n_in
-        for h in hidden:
-            layers += [torch.nn.Linear(prev, h, dtype=DTYPE), torch.nn.Tanh()]
-            prev = h
-        layers += [torch.nn.Linear(prev, n_params, dtype=DTYPE)]
-        self.net = torch.nn.Sequential(*layers)
+        self.ignore_geometry = hidden is None
+        if self.ignore_geometry:
+            # Bias only: same prediction regardless of input geometry.
+            layers = [torch.nn.Linear(n_in, n_params, dtype=DTYPE)]
+            self.net = torch.nn.Sequential(*layers)
+            self.net[-1].weight.requires_grad_(False)
+        else:
+            layers, prev = [], n_in
+            for h in hidden:
+                layers += [torch.nn.Linear(prev, h, dtype=DTYPE),
+                           torch.nn.Tanh()]
+                prev = h
+            layers += [torch.nn.Linear(prev, n_params, dtype=DTYPE)]
+            self.net = torch.nn.Sequential(*layers)
         # Start at the baseline mean: the last layer is zeroed so the initial
         # prediction is exactly `mean`, which is a sane physical starting point
         # rather than noise.
@@ -160,7 +186,7 @@ def predict_force(family, params, rec, idx):
 
     if family == "longitudinal":
         x = torch.cat([params, torch.tensor([rec["F_z0"]], dtype=DTYPE)])
-        return mf_torch.tm_long(F_z, T(rec["s"]), 1, x)
+        return mf_torch.tm_long(F_z, T(rec["s"]), 1, x)[0]
 
     # Combined slip. magic.py feeds G_x the longitudinal vector for the same
     # spec and G_y the lateral one (magic.py:1198, :1638); those come from the
@@ -175,7 +201,7 @@ def predict_force(family, params, rec, idx):
     F_z0 = torch.tensor(rec["F_z0_source"], dtype=DTYPE)
 
     if family == "gx":
-        base = mf_torch.tm_long(F_z, T(rec["s"]), 1, src)
+        base = mf_torch.tm_long(F_z, T(rec["s"]), 1, src)[0]
         G = mf_torch.GX(F_z, F_z0, T(rec["s"]), T(rec["alpha"]),
                         T(rec["gamma"]), params)
         return base * G                                   # magic.py:1100
@@ -272,11 +298,26 @@ def train_one(family, protocol, fold_name, split, recs, cfg):
             pred = predict_force(family, params_all[j], rec, idx)
             targ = target_force(family, rec, idx)
             resid = pred - targ
+            scale = max(float(np.std(
+                (rec["F_y"] if family in ("lateral", "gy")
+                 else rec["F_x"])[idx])), 1e-6)
             if cfg["normalize"]:
-                resid = resid / max(float(np.std(
-                    (rec["F_y"] if family in ("lateral", "gy")
-                     else rec["F_x"])[idx])), 1e-6)
-            total = total + (resid ** 2).mean()
+                resid = resid / scale
+
+            delta = cfg.get("huber_delta")
+            if delta:
+                # Huber: quadratic near zero, linear beyond delta, so a small
+                # population of very wrong points (the SL==0 fill samples)
+                # stops dominating the gradient. delta is in units of the
+                # spec's own force spread so it means the same thing on every
+                # tire.
+                d = delta if cfg["normalize"] else delta * scale
+                a = torch.abs(resid)
+                term = torch.where(a <= d, 0.5 * resid ** 2,
+                                   d * (a - 0.5 * d))
+                total = total + term.mean()
+            else:
+                total = total + (resid ** 2).mean()
             n_terms += 1
         loss = total / max(n_terms, 1)
         if not torch.isfinite(loss):

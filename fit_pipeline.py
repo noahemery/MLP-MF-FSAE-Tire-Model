@@ -151,6 +151,7 @@ class LateralSpec:
     block_line: int
     fz0_files: tuple      # NOT always the same set as case_files
     case_files: tuple     # of FileSpec
+    diameter_in: float = None   # William stores this before F_z0 in the vector
     family: str = "lateral"
     depends_on: str = None
 
@@ -163,6 +164,7 @@ class LongitudinalSpec:
     case_files: tuple     # of str; segmentation literals are family constants
     d_margin: float       # the "+ N" in the D upper bound
     svx_bound: float      # the S_vx bound magnitude
+    diameter_in: float = None   # William stores this before F_z0 in the vector
     family: str = "longitudinal"
     depends_on: str = None
 
@@ -179,7 +181,7 @@ class CombinedSpec:
 
 LATERAL_SPECS = (
     LateralSpec(
-        spec_id="lat_160X75_R20_70", block_line=349,
+        spec_id="lat_160X75_R20_70", diameter_in=16.0, block_line=349,
         fz0_files=(CORNERING.format(4), CORNERING.format(5), CORNERING.format(6)),
         case_files=(
             FileSpec(CORNERING.format(4), 200, 30, 0.86, 8, 12),
@@ -188,7 +190,7 @@ LATERAL_SPECS = (
         ),
     ),
     LateralSpec(
-        spec_id="lat_160X75_R20_80", block_line=415,
+        spec_id="lat_160X75_R20_80", diameter_in=16.0, block_line=415,
         # magic.py:416-418 stacks these in the order 8, 7, 9. Preserved.
         fz0_files=(CORNERING.format(8), CORNERING.format(7), CORNERING.format(9)),
         case_files=(
@@ -197,7 +199,7 @@ LATERAL_SPECS = (
         ),
     ),
     LateralSpec(
-        spec_id="lat_205X70_R20_70", block_line=465,
+        spec_id="lat_205X70_R20_70", diameter_in=20.5, block_line=465,
         fz0_files=(CORNERING.format(16), CORNERING.format(17), CORNERING.format(18)),
         case_files=(
             FileSpec(CORNERING.format(17), 130, 120, 0.86, 6, 12),
@@ -205,7 +207,7 @@ LATERAL_SPECS = (
         ),
     ),
     LateralSpec(
-        spec_id="lat_205X70_R20_80", block_line=516,
+        spec_id="lat_205X70_R20_80", diameter_in=20.5, block_line=516,
         fz0_files=(CORNERING.format(19), CORNERING.format(20), CORNERING.format(21)),
         case_files=(
             FileSpec(CORNERING.format(20), 130, 90, 0.86, 6, 12),
@@ -213,7 +215,7 @@ LATERAL_SPECS = (
         ),
     ),
     LateralSpec(
-        spec_id="lat_180X60_R20_60", block_line=567,
+        spec_id="lat_180X60_R20_60", diameter_in=18.0, block_line=567,
         fz0_files=(CORNERING.format(27), CORNERING.format(28), CORNERING.format(29)),
         case_files=(
             FileSpec(CORNERING.format(28), 190, 20, 0.86, 9, 12),
@@ -221,7 +223,7 @@ LATERAL_SPECS = (
         ),
     ),
     LateralSpec(
-        spec_id="lat_180X60_R20_70", block_line=619,          # the live block
+        spec_id="lat_180X60_R20_70", diameter_in=18.0, block_line=619,          # the live block
         fz0_files=(CORNERING.format(30), CORNERING.format(31), CORNERING.format(32)),
         case_files=(
             FileSpec(CORNERING.format(31), 110, 18, 0.89, 10, 12),
@@ -232,13 +234,13 @@ LATERAL_SPECS = (
 
 LONGITUDINAL_SPECS = (
     LongitudinalSpec(
-        spec_id="long_205X70_R20_70", block_line=783,
+        spec_id="long_205X70_R20_70", diameter_in=20.5, block_line=783,
         fz0_files=(STRAIGHT.format(51), STRAIGHT.format(52)),
         case_files=(STRAIGHT.format(51), STRAIGHT.format(52)),
         d_margin=200, svx_bound=200,
     ),
     LongitudinalSpec(
-        spec_id="long_205X70_R20_80", block_line=833,
+        spec_id="long_205X70_R20_80", diameter_in=20.5, block_line=833,
         fz0_files=(STRAIGHT.format(54), STRAIGHT.format(55)),
         case_files=(STRAIGHT.format(54), STRAIGHT.format(55)),
         # magic.py:861-862 -- margin 100 but bound 150. The only spec where
@@ -246,13 +248,13 @@ LONGITUDINAL_SPECS = (
         d_margin=100, svx_bound=150,
     ),
     LongitudinalSpec(
-        spec_id="long_180X60_R20_60", block_line=883,
+        spec_id="long_180X60_R20_60", diameter_in=18.0, block_line=883,
         fz0_files=(STRAIGHT.format(69), STRAIGHT.format(70)),
         case_files=(STRAIGHT.format(69), STRAIGHT.format(70)),
         d_margin=150, svx_bound=150,
     ),
     LongitudinalSpec(
-        spec_id="long_180X60_R20_70", block_line=933,
+        spec_id="long_180X60_R20_70", diameter_in=18.0, block_line=933,
         fz0_files=(STRAIGHT.format(72), STRAIGHT.format(73)),
         case_files=(STRAIGHT.format(72), STRAIGHT.format(73)),
         d_margin=50, svx_bound=50,
@@ -291,17 +293,45 @@ ALL_SPECS = {s.spec_id: s for s in
 #   longitudinal second_pass_x:706-719  + trailing F_z0 from the hstack
 #   gx           second_pass_GX:1115-1121   (bare result.x -- see DECISIONS)
 #   gy           second_pass_GY:1395-1409   (bare result.x)
+# NOTE: William's 2026-09 magic.py appends tire diameter before F_z0 on the
+# pure-slip families, e.g. np.hstack((result.x, 16.0, F_z0)). Lateral vectors
+# are therefore 24 long and longitudinal 16. tm_lat/tm_long are unaffected --
+# they index x[0]..x[21] and x[-1] -- but anything reading the vector by
+# length or slicing off the tail must account for the extra element.
+# Use strip_geometry() to recover the [params..., F_z0] form.
 PARAM_NAMES = {
     "lateral": ["PDY1", "PDY2", "PDY3", "PCY1", "PKY1", "PKY2", "PKY3", "PKY4",
                 "PKY5", "PKY6", "PKY7", "PHY1", "PHY2", "PEY1", "PEY2", "PEY3",
-                "PEY4", "PEY5", "PVY1", "PVY2", "PVY3", "PVY4", "F_z0"],
+                "PEY4", "PEY5", "PVY1", "PVY2", "PVY3", "PVY4",
+                "diameter_in", "F_z0"],
     "longitudinal": ["PDX1", "PDX2", "PCX1", "PKX1", "PKX2", "PKX3", "PHX1",
                      "PHX2", "PEX1", "PEX2", "PEX3", "PEX4", "PVX1", "PVX2",
-                     "F_z0"],
+                     "diameter_in", "F_z0"],
     "gx": ["RBX1", "RBX2", "RBX3", "RCX1", "REX1", "REX2", "RHX1"],
     "gy": ["RBY1", "RBY2", "RBY3", "RBY4", "RCY1", "REY1", "REY2", "RHY1",
            "RHY2", "RVY1", "RVY2", "RVY3", "RVY4", "RVY5", "RVY6"],
 }
+
+
+# Fitted-parameter count per family, i.e. what least_squares actually solves
+# for. Everything after this in a stored vector is metadata (diameter, F_z0).
+N_FITTED = {"lateral": 22, "longitudinal": 14, "gx": 7, "gy": 15}
+
+
+def strip_geometry(vector, family):
+    """Return [fitted params..., F_z0], dropping any geometry metadata.
+
+    William's vectors are [params..., diameter, F_z0] for the pure-slip
+    families and bare params for the G families. tm_lat and tm_long expect
+    F_z0 as the LAST element, so the diameter has to come out rather than be
+    sliced past.
+    """
+    import numpy as _np
+    v = _np.asarray(vector).ravel()
+    n = N_FITTED[family]
+    if family in ("gx", "gy"):
+        return v[:n]
+    return _np.concatenate([v[:n], v[-1:]])
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +360,15 @@ def build_cases_lateral(spec):
     return cases
 
 
+# The SL channel is gated to exactly 0.0 between sweeps while FX keeps
+# recording -- 53-59% of every straight file, with up to 4463 N present at
+# those samples. They are not slip-ratio measurements, and at sweep boundaries
+# the force has not decayed yet, so they dominate the residual: 2.4% of points
+# caused 8.9% of squared error. Excluding them took long_205X70 from 27.1% to
+# 6.8%. Owner authorised adjusting case selection 2026-09-09.
+DROP_SL_ZERO = True
+
+
 def build_cases_straight(case_files, sa_test):
     """magic.py:790-800 / 1166-1176 / 1465-1475.
 
@@ -347,7 +386,15 @@ def build_cases_straight(case_files, sa_test):
             if ((_et_span(split[i]) < STRAIGHT_ET_HI)
                     & (_et_span(split[i]) > STRAIGHT_ET_LO)
                     & sa_test(np.abs(split[i]["SA"]).mean())):
-                cases.append(split[i])
+                seg = split[i]
+                if DROP_SL_ZERO:
+                    keep = np.asarray(seg["SL"]).reshape(-1) != 0.0
+                    if keep.sum() < 50:
+                        continue
+                    seg = {k: (v[keep] if hasattr(v, "shape")
+                               and getattr(v, "shape", (0,))[:1] == keep.shape
+                               else v) for k, v in seg.items()}
+                cases.append(seg)
     return cases
 
 
@@ -393,7 +440,8 @@ def run_lateral(spec):
                            ftol=TOL, xtol=TOL, gtol=TOL,
                            max_nfev=MAX_NFEV, verbose=VERBOSE)
 
-    return np.hstack((result.x, F_z0)), result, cases, F_z0
+    return (np.hstack((result.x, spec.diameter_in, F_z0)),
+            result, cases, F_z0)
 
 
 def run_longitudinal(spec):
@@ -425,7 +473,8 @@ def run_longitudinal(spec):
                            ftol=TOL, xtol=TOL, gtol=TOL,
                            max_nfev=MAX_NFEV, verbose=VERBOSE)
 
-    return np.hstack((result.x, F_z0)), result, cases, F_z0
+    return (np.hstack((result.x, spec.diameter_in, F_z0)),
+            result, cases, F_z0)
 
 
 def run_gx(spec, long_params):

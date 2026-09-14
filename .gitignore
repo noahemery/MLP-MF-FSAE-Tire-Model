@@ -19,3 +19,7 @@ plots/
 .idea/
 .DS_Store
 .ipynb_checkpoints/
+
+# working copies of magic.py kept during the Sept integration
+magic_*.py
+magic(old).py

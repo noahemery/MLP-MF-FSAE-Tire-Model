@@ -408,7 +408,7 @@ def second_pass_y(data, F_z0, lambda_mu_y, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# lat_160X75_R20_70 = np.hstack((result.x, F_z0)) 
+# lat_160X75_R20_70 = np.hstack((result.x, 16.0, F_z0)) 
 
 
 
@@ -458,7 +458,7 @@ def second_pass_y(data, F_z0, lambda_mu_y, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# lat_160X75_R20_80 = np.hstack((result.x,F_z0))
+# lat_160X75_R20_80 = np.hstack((result.x, 16.0, F_z0))
 
 
 
@@ -509,7 +509,7 @@ def second_pass_y(data, F_z0, lambda_mu_y, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# lat_205X70_R20_70 = np.hstack((result.x, F_z0)) 
+# lat_205X70_R20_70 = np.hstack((result.x, 20.5, F_z0)) 
 
 
 
@@ -560,7 +560,7 @@ def second_pass_y(data, F_z0, lambda_mu_y, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# lat_205X70_R20_80 = np.hstack((result.x, F_z0)) 
+# lat_205X70_R20_80 = np.hstack((result.x, 20.5, F_z0)) 
 
 
 
@@ -612,7 +612,7 @@ def second_pass_y(data, F_z0, lambda_mu_y, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# lat_180X60_R20_60 = np.hstack((result.x, F_z0)) 
+# lat_180X60_R20_60 = np.hstack((result.x, 18.0, F_z0)) 
 
 
 
@@ -663,7 +663,7 @@ def second_pass_y(data, F_z0, lambda_mu_y, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# lat_180X60_R20_70 = np.hstack((result.x, F_z0)) 
+# lat_180X60_R20_70 = np.hstack((result.x, 18.0, F_z0)) 
 
 
 
@@ -733,7 +733,7 @@ def second_pass_x(data, F_z0, lambda_mu_x, BCDE_params, x):
     shit = (
     D_x[0] - (mu_x * F_z),
     C_x[0] - PCX1,
-    B_x[0] - BCD_x / (mu_x * F_z * PCX1),
+    B_x[0] - BCD_x / (mu_x * F_z * PCX1 + 1e-8),
     S_hx[0] - (PHX1 + PHX2 * df_z),
     E_x[0] - ((PEX1 + PEX2 * df_z + PEX3 * df_z ** 2) * (1 - PEX4 * np.sign(s + (PHX1 + PHX2 * df_z)))),
     S_vx[0] - (F_z * (PVX1 + PVX2 * df_z))
@@ -826,7 +826,7 @@ def second_pass_x(data, F_z0, lambda_mu_x, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# long_205X70_R20_70 = np.hstack((result.x, F_z0))
+# long_205X70_R20_70 = np.hstack((result.x, 20.5, F_z0))
 
 
 
@@ -876,7 +876,7 @@ def second_pass_x(data, F_z0, lambda_mu_x, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# long_205X70_R20_80 = np.hstack((result.x, F_z0))
+# long_205X70_R20_80 = np.hstack((result.x, 20.5, F_z0))
 
 
 
@@ -926,7 +926,7 @@ def second_pass_x(data, F_z0, lambda_mu_x, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# long_180X60_R20_60 = np.hstack((result.x, F_z0))
+# long_180X60_R20_60 = np.hstack((result.x, 18.0, F_z0))
 
 
 
@@ -976,7 +976,7 @@ def second_pass_x(data, F_z0, lambda_mu_x, BCDE_params, x):
 #                        ftol=2.3e-16, xtol=2.3e-16, gtol=2.3e-16,
 #                        max_nfev=int(1e+8), verbose=1)
 
-# long_180X60_R20_70 = np.hstack((result.x, F_z0))
+# long_180X60_R20_70 = np.hstack((result.x, 18.0, F_z0))
 
 
 
@@ -1024,7 +1024,7 @@ def tm_lat(F_z, alpha, gamma, lambda_mu_y, x):
     # Fit parameters to B C D E P_hy and P_vy
     D_y = (mu_y * F_z)
     C_y = PCY1
-    B_y = BCD_y / (mu_y * F_z * PCY1)
+    B_y = BCD_y / (mu_y * F_z * PCY1 + 1e-8)
     S_hy = ((PHY1 + PHY2 * df_z) + (K_y_gamma_0 * gamma - S_vy_gamma) / (BCD_y + 1e-8))
     E_y = ((PEY1 + PEY2 * df_z) * (1 + PEY5 * gamma ** 2 - (PEY3 + PEY4 * gamma) * np.sign(alpha + S_hy)))
     S_vy = ((PVY1 + PVY2 * df_z) * F_z + S_vy_gamma)
@@ -1060,16 +1060,16 @@ def tm_long(F_z, s, lambda_mu_x, x):
     BCD_x = F_z * (PKX1 + PKX2 * df_z) * np.exp(PKX3 * df_z)
         
     # Fit parameters to B C D E P_hy and P_vy
-    D_x = (mu_x * F_z),
-    C_x = PCX1,
-    B_x = BCD_x / (mu_x * F_z * PCX1),
-    S_hx = (PHX1 + PHX2 * df_z),
-    E_x = ((PEX1 + PEX2 * df_z + PEX3 * df_z ** 2) * (1 - PEX4 * np.sign(s + S_hx))),
+    D_x = (mu_x * F_z)
+    C_x = PCX1
+    B_x = BCD_x / (mu_x * F_z * PCX1)
+    S_hx = (PHX1 + PHX2 * df_z)
+    E_x = ((PEX1 + PEX2 * df_z + PEX3 * df_z ** 2) * (1 - PEX4 * np.sign(s + S_hx)))
     S_vx = (F_z * (PVX1 + PVX2 * df_z))
     
     # FORGE THE MAGIC FORMULA
     Y = D_x * np.sin(C_x * np.arctan(B_x * (s + S_hx) - E_x * (B_x * (s + S_hx) - np.arctan(B_x * (s + S_hx))))) + S_vx
-    return Y
+    return Y, BCD_x
 
 
 
@@ -1097,9 +1097,10 @@ def first_pass_GX(data, x, long_params):
     G_x = np.cos(C_gx * np.arctan(B_gx * (alpha + S_hgx) - E_gx * (B_gx * (alpha + S_hgx) - np.arctan(B_gx * (alpha + S_hgx))))) / G_x0
     
     # UTILIZE THE MAGIC FORMULA (for longitudinal force)
-    Y = tm_long(F_z, s, 1, long_params) * G_x
+    Y, _ = tm_long(F_z, s, 1, long_params)
+    Y = Y * G_x
     
-    if (G_x.any() > 1):
+    if np.any(G_x > 1):
         return (Y - F_x).squeeze() ** 10
     else: 
         return (Y - F_x).squeeze()
@@ -1351,7 +1352,7 @@ def second_pass_GX(data, F_z0, lambda_mu_x, BCES_params, x):
 
 
 #-------------------------------------------------------------------------------------------------
-#                      DEFINE THE G CORRECTIONS FOR LONGITUDINAL AND LATERAL MFS
+#                      DEFINE THE G CORRECTIONS FOR LATERAL MFS
 #-------------------------------------------------------------------------------------------------
 
 
@@ -1361,7 +1362,7 @@ def first_pass_GY(data, x, lat_params):
     F_z = -data["FZ"]
     F_y = -data["FY"]
     s = data["SL"]
-    gamma = np.sin(data["SA"] * np.pi / 180).mean()
+    gamma = np.sin(data["IA"] * np.pi / 180).mean()
     alpha = np.tan(data["SA"] * np.pi / 180)
     
     # Read in the parameters
@@ -1376,9 +1377,10 @@ def first_pass_GY(data, x, lat_params):
     G_x = np.cos(C_gy * np.arctan(B_gy * (s + S_hgy) - E_gy * (B_gy * (s + S_hgy) - np.arctan(B_gy * (s + S_hgy))))) / G_x0
     
     # UTILIZE THE MAGIC FORMULA (for longitudinal force)
-    Y, _, _, _, _, _ = tm_lat(F_z, alpha, gamma, 1, lat_params) * G_x
+    Y, _, _, _, _, _ = tm_lat(F_z, alpha, gamma, 1, lat_params)
+    Y = Y * G_x
     
-    if (G_x.any() > 1):
+    if np.any(G_x > 1):
         return (Y - F_y + S_vgy).squeeze() ** 10
     else: 
         return (Y - F_y + S_vgy).squeeze()
@@ -1436,7 +1438,7 @@ def second_pass_GY(data, F_z0, lambda_mu_x, BCES_params, x, lat_params):
         F_z = -data[i]["FZ"]
         s = data[i]["SL"]
         gamma = np.sin(data[i]["IA"] * np.pi / 180).mean()
-        alpha = np.tan(data[i]["SA"] * np.pi / 180).mean()
+        alpha = np.tan(data[i]["SA"] * np.pi / 180)
         
         # Load sensitivity factor
         df_z = (F_z - F_z0) / F_z0
@@ -1721,18 +1723,287 @@ def GY(F_z, F_z0, s, alpha, gamma, x, lat_params):
     
 
 
+#-------------------------------------------------------------------------------------------------
+#                    DETERMINE THE OVERTURNING MOMENT   
+#-------------------------------------------------------------------------------------------------
 
 
 
+def fit_MX(data, x, lat_params, gy_params):
+    # Read in the fitted shit
+    QSX1 = x[0]
+    QSX2 = x[1]
+    QSX3 = x[2]
+    
+    # Get the unloaded radius and nominal load
+    F_z0 = lat_params[-1]
+    R_0 = lat_params[-2] * 0.5 * 0.0254 # [m]
+    
+    # Read in the data
+    M_x = data[0]["MX"]
+    F_z = -data[0]["FZ"]
+    gamma = np.sin(data[0]["IA"] * np.pi / 180)
+    alpha = np.tan(data[0]["SA"] * np.pi / 180)
+    s = data[0]["SL"]
+    
+    # Compute the corrected longitudinal force
+    Y, _, _, _, _, _ = tm_lat(F_z, alpha, gamma, 1, lat_params)
+    G_y, _ = GY(F_z, F_z0, s, alpha, gamma, gy_params, lat_params)
+    F_y = Y * G_y
+    
+    # COMPUTE THE MAGIC OVERTURING MOMENT
+    residuals = (F_z * R_0 * (QSX1 - QSX2 * gamma + QSX3 * F_y / F_z0) - M_x).squeeze()
+    
+    for i in range(1,len(data)):
+        # Read in the data
+        M_x = data[i]["MX"]
+        F_z = -data[i]["FZ"]
+        gamma = np.sin(data[i]["IA"] * np.pi / 180)
+        alpha = np.tan(data[i]["SA"] * np.pi / 180)
+        s = data[i]["SL"]
+        
+        # Compute the corrected longitudinal force
+        Y, _, _, _, _, _ = tm_lat(F_z, alpha, gamma, 1, lat_params)
+        G_y, _ = GY(F_z, F_z0, s, alpha, gamma, gy_params, lat_params)
+        F_y = Y * G_y
+        
+        # COMPUTE THE MAGIC OVERTURING MOMENT
+        residuals = np.vstack((residuals, (F_z * R_0 * (QSX1 - QSX2 * gamma + QSX3 * F_y / F_z0) - M_x).squeeze()))
+        
+    
+    return residuals.squeeze()
 
 
 
+#-------------------------------------------------------------------------------------------------
+#                    DETERMINE THE ROLLING RESISTANCE MOMENT   
+#-------------------------------------------------------------------------------------------------
 
 
 
+def fit_MY(data, x, long_params, gx_params):
+    # Read in the fitted shit
+    QSY1 = x[0]
+    QSY2 = x[1]
+    
+    # Get the unloaded radius and nominal load
+    F_z0 = long_params[-1]
+    R_0 = long_params[-2] * 0.5 * 0.0254 # [m]
+    
+    # Compute reference velocity using gravity
+    v_0 = np.sqrt(9.81 * R_0)
+    
+    # Read in the data
+    M_y = data[0]["MY"]
+    F_z = -data[0]["FZ"]
+    gamma = np.sin(data[0]["IA"] * np.pi / 180)
+    alpha = np.tan(data[0]["SA"] * np.pi / 180)
+    s = data[0]["SL"]
+    v_r = data[0]["V"] * 0.277778
+    
+    # Compute the corrected longitudinal force
+    Y, _ = tm_long(F_z, s, 1, long_params)
+    G_x = GX(F_z, F_z0, s, alpha, gamma, gx_params)
+    F_x = Y * G_x
+    
+    # COMPUTE THE MAGIC OVERTURING MOMENT
+    residuals = (-F_z * R_0 * (QSY1 * np.arctan(v_r / v_0) + QSY2 * F_x / F_z0) - M_y).squeeze()
+    
+    for i in range(1,len(data)):
+        # Read in the data
+        M_y = data[i]["MY"]
+        F_z = -data[i]["FZ"]
+        gamma = np.sin(data[i]["IA"] * np.pi / 180)
+        alpha = np.tan(data[i]["SA"] * np.pi / 180)
+        s = data[i]["SL"]
+        v_r = data[i]["V"] * 0.277778
+        
+        # Compute the corrected longitudinal force
+        Y, _ = tm_long(F_z, s, 1, long_params)
+        G_x = GX(F_z, F_z0, s, alpha, gamma, gx_params)
+        F_x = Y * G_x
+        
+        # COMPUTE THE MAGIC OVERTURING MOMENT
+        residuals = np.vstack((residuals, (-F_z * R_0 * (QSY1 * np.arctan(v_r / v_0) + QSY2 * F_x / F_z0) - M_y).squeeze()))
+        
+    
+    return residuals.squeeze()
 
 
 
+#-------------------------------------------------------------------------------------------------
+#                    DETERMINE THE ROLLING RESISTANCE MOMENT   
+#-------------------------------------------------------------------------------------------------
+
+
+
+def first_pass_MX(data, x, lat_params, long_params, gx_params, gy_params):
+    # Read in the data
+    F_z = -data["FZ"]
+    M_z = data["MZ"]
+    s = data["SL"]
+    gamma = np.sin(data["IA"] * np.pi / 180).mean()
+    alpha = np.tan(data["SA"] * np.pi / 180)
+    F_z0_y = lat_params[-1]
+    F_z0_x = long_params[-1]
+    
+    # Read in the parameters
+    D_t = x[0]
+    C_t = x[1]
+    B_t = x[2]
+    E_t = x[3]
+    D_r = x[4]
+    C_r = x[5]
+    B_r = x[6]
+    S_arm = x[7]
+    S_ht = x[8]
+    # NOTE: this used to read S_vy = x[8] and S_ht = x[9]. x[8] was dead --
+    # S_vy is overwritten three lines below by the tm_lat unpacking before it
+    # is ever used, so the optimiser was carrying a parameter with no effect
+    # on the residual. Removing it also aligns the first pass with
+    # second_pass_MZ, which reads BCDE_params[8] as S_ht.
+    
+    # Get the forces from MAGIC FORMULA
+    G_y, S_vgy = GY(F_z, F_z0_y, s, alpha, gamma, gy_params, lat_params)
+    G_x = GX(F_z, F_z0_x, s, alpha, gamma, gx_params)
+    F_y, BCD_y, D_y, S_hy, S_vy, mu_y = tm_lat(F_z, alpha, gamma, 1, lat_params)
+    F_y = F_y * G_y + S_vgy
+    F_x, BCD_x = tm_long(F_z, s, 1, long_params)
+    F_x = F_x * G_x
+    
+    # Calculate some stuff
+    S_hf = S_hy + S_vy / (BCD_y + 1e-8)
+    alpha_t = np.sqrt((alpha + S_ht) ** 2 + (BCD_x / (BCD_y+1e-8)) ** 2 * s ** 2) * np.sign(alpha + S_ht)
+    alpha_r = np.sqrt((alpha + S_hf) ** 2 + (BCD_x / (BCD_y+1e-8)) ** 2 * s ** 2) * np.sign(alpha + S_hf)
+    
+    # CALCULATE THE PNEUMATIC TRAIL AND CORRECTION
+    t = D_t * np.cos(C_t * np.arctan(B_t * alpha_t - E_t * (B_t * alpha_t - np.arctan(B_t * alpha_t)))) * np.cos(np.tan(alpha))
+    M_zr = D_r * np.cos(C_r * np.arctan(B_r * alpha_r))
+    
+    # CALCULATE THE SELF-ALIGNING TORQUE
+    Y = -1 * t * F_y + S_arm * F_x + M_zr
+    
+    return (Y - M_z).squeeze()
+    
+def second_pass_MZ(data, F_z0, lambda_mu_x, BCDE_params, x, lat_params, long_params, gx_params, gy_params):    
+    # Read in the parameters
+    D_t = BCDE_params[0]
+    C_t = BCDE_params[1]
+    B_t = BCDE_params[2]
+    E_t = BCDE_params[3]
+    D_r = BCDE_params[4]
+    C_r = BCDE_params[5]
+    B_r = BCDE_params[6]
+    S_arm = BCDE_params[7]
+    S_ht = BCDE_params[8]
+    
+    # Get the unloaded radius
+    R_0 = long_params[-2] * 0.5 * 0.0254 # [m]
+    
+    # Read in the other parameters
+    QDZ1 = x[0]
+    QDZ2 = x[1]
+    QDZ3 = x[2]
+    QDZ4 = x[3]
+    QDZ5 = x[4]
+    QDZ6 = x[5]
+    QDZ7 = x[6]
+    QDZ8 = x[7]
+    QDZ9 = x[8]
+    QDZ10 = x[9]
+    QDZ11 = x[10]
+    QCZ1 = x[11]
+    QBZ1 = x[12]
+    QBZ2 = x[13]
+    QBZ3 = x[14]
+    QBZ4 = x[15]
+    QBZ5 = x[16]
+    QBZ6 = x[17]
+    QBZ7 = x[18]
+    QBZ8 = x[19]
+    QBZ9 = x[20]
+    QBZ10 = x[21]
+    QBZ11 = x[22]
+    QEZ1 = x[23]
+    QEZ2 = x[24]
+    QEZ3 = x[25]
+    QEZ4 = x[26]
+    QEZ5 = x[27]
+    QHZ1 = x[28]
+    QHZ2 = x[29]
+    QHZ3 = x[30]
+    QHZ4 = x[31]
+    QSZ1 = x[32]
+    QSZ2 = x[33]
+    QSZ3 = x[34]
+    QSZ4 = x[35]
+    
+    
+    # Read in the data
+    F_z = -data[0]["FZ"]
+    s = data[0]["SL"]
+    gamma = np.sin(data[0]["IA"] * np.pi / 180).mean()
+    alpha = np.tan(data[0]["SA"] * np.pi / 180)
+    V_c = data[0]["V"] * 0.277778
+    
+    # Load sensitivity factor
+    df_z = (F_z - F_z0) / F_z0
+    
+    # Magic
+    G_y, S_vgy = GY(F_z, lat_params[-1], s, alpha, gamma, gy_params, lat_params)
+    F_y, BCD_y, D_y, S_hy, S_vy, mu_y = tm_lat(F_z, alpha, gamma, 1, lat_params)
+    F_y = F_y * G_y + S_vgy
+    _, BCD_x = tm_long(F_z, s, 1, long_params)
+    alpha_t = np.sqrt((alpha + (QHZ1 + QHZ2 * df_z + (QHZ3 + QHZ4 * df_z) * gamma)) ** 2 + (BCD_x / (BCD_y+1e-8)) ** 2 * s ** 2) * np.sign(alpha + (QHZ1 + QHZ2 * df_z + (QHZ3 + QHZ4 * df_z) * gamma))
+    
+    # Fit parameters to the other shit
+    shit = (D_t[0] - (F_z * (R_0 / F_z0) * (QDZ1 + QDZ2 * df_z) * np.sign(V_c)) * (1 + QDZ3 * np.abs(gamma) + QDZ4 * gamma ** 2),
+            C_t[0] - QCZ1,
+            B_t[0] - (QBZ1 + QBZ2 * df_z + QBZ3 * df_z ** 2) * (1 + QBZ5 * np.abs(gamma) + QBZ6 * gamma ** 2) * BCD_y / (mu_y + 1e-8),
+            E_t[0] - (QEZ1 + QEZ2 * df_z + QEZ3 * df_z ** 2) * (1 + (QEZ4 + QEZ5 * gamma) * 2 * np.arctan((QBZ1 + QBZ2 * df_z + QBZ3 * df_z ** 2) * (1 + QBZ5 * np.abs(gamma) + QBZ6 * gamma ** 2) * BCD_y / (mu_y + 1e-8) * QCZ1 * alpha_t) / np.pi),
+            D_r[0] - F_z * R_0 * ((QDZ6 + QDZ7 * df_z) + (QDZ8 + QDZ9 * df_z) * gamma + (QDZ10 + QDZ11 * df_z) * gamma * np.abs(gamma)) * np.cos(np.tan(alpha)) * np.sign(V_c),
+            C_r[0] - 1,
+            B_r[0] - (QBZ9 * BCD_y / (mu_y) + QBZ10 * BCD_y / D_y),
+            S_arm[0] - R_0 * (QSZ1 + QSZ2 * (F_y / F_z0) + (QSZ3 + QSZ4 * df_z) * gamma),
+            S_ht[0] - (QHZ1 + QHZ2 * df_z + (QHZ3 + QHZ4 * df_z) * gamma)
+            )
+    
+    residuals = np.vstack(shit)
+    
+    for i in range(1,len(data)):
+        # Read in the data
+        F_z = -data[i]["FZ"]
+        s = data[i]["SL"]
+        gamma = np.sin(data[i]["IA"] * np.pi / 180).mean()
+        alpha = np.tan(data[i]["SA"] * np.pi / 180)
+        V_c = data[i]["V"] * 0.277778
+        
+        # Load sensitivity factor
+        df_z = (F_z - F_z0) / F_z0
+        
+        # Magic
+        G_y, S_vgy = GY(F_z, lat_params[-1], s, alpha, gamma, gy_params, lat_params)
+        F_y, BCD_y, D_y, S_hy, S_vy, mu_y = tm_lat(F_z, alpha, gamma, 1, lat_params)
+        F_y = F_y * G_y + S_vgy
+        _, BCD_x = tm_long(F_z, s, 1, long_params)
+        alpha_t = np.sqrt((alpha + (QHZ1 + QHZ2 * df_z + (QHZ3 + QHZ4 * df_z) * gamma)) ** 2 + (BCD_x / (BCD_y+1e-8)) ** 2 * s ** 2) * np.sign(alpha + (QHZ1 + QHZ2 * df_z + (QHZ3 + QHZ4 * df_z) * gamma))
+        
+        # Fit parameters to the other shit
+        shit = (residuals,
+                D_t[i] - (F_z * (R_0 / F_z0) * (QDZ1 + QDZ2 * df_z) * np.sign(V_c)) * (1 + QDZ3 * np.abs(gamma) + QDZ4 * gamma ** 2),
+                C_t[i] - QCZ1,
+                B_t[i] - (QBZ1 + QBZ2 * df_z + QBZ3 * df_z ** 2) * (1 + QBZ5 * np.abs(gamma) + QBZ6 * gamma ** 2) * BCD_y / (mu_y + 1e-8),
+                E_t[i] - (QEZ1 + QEZ2 * df_z + QEZ3 * df_z ** 2) * (1 + (QEZ4 + QEZ5 * gamma) * 2 * np.arctan((QBZ1 + QBZ2 * df_z + QBZ3 * df_z ** 2) * (1 + QBZ5 * np.abs(gamma) + QBZ6 * gamma ** 2) * BCD_y / (mu_y + 1e-8) * QCZ1 * alpha_t) / np.pi),
+                D_r[i] - F_z * R_0 * ((QDZ6 + QDZ7 * df_z) + (QDZ8 + QDZ9 * df_z) * gamma + (QDZ10 + QDZ11 * df_z) * gamma * np.abs(gamma)) * np.cos(np.tan(alpha)) * np.sign(V_c),
+                C_r[i] - 1,
+                B_r[i] - (QBZ9 * BCD_y / (mu_y) + QBZ10 * BCD_y / D_y),
+                S_arm[i] - R_0 * (QSZ1 + QSZ2 * (F_y / F_z0) + (QSZ3 + QSZ4 * df_z) * gamma),
+                S_ht[i] - (QHZ1 + QHZ2 * df_z + (QHZ3 + QHZ4 * df_z) * gamma)
+                )
+        
+        residuals = np.vstack(shit)
+    
+    return residuals.squeeze()
 
 
 

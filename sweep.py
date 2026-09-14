@@ -73,6 +73,22 @@ DEEP = {
     "protocols": ("segment", "spec"),
 }
 
+# Model-selection sweep. The question is not "which hyperparameters" but
+# "which model class", because with 6 training specs capacity dominates:
+#   hidden=None    ignore geometry, one vector for all tires (null model)
+#   hidden=()      linear in geometry
+#   hidden=(32,32) MLP
+# Run on the 'spec' protocol only -- leave-one-tire-out is the protocol that
+# matches the actual goal, predicting parameters for a tire we have not tested.
+MODELS = {
+    "grid": {"lr": (1e-3, 1e-2),
+             "hidden": (None, (), (32, 32)),
+             "normalize": (False,),
+             "huber_delta": (None, 1.5)},
+    "seeds": (0,), "n_folds": 5, "steps": 1500, "max_rows": 6000,
+    "protocols": ("spec",),
+}
+
 QUICK = {
     "grid": {"lr": (1e-3,), "hidden": ((32, 32),), "normalize": (False,)},
     "seeds": (0,), "n_folds": 3, "steps": 300, "max_rows": 3000,
@@ -86,8 +102,10 @@ def run_key(r):
     steps is part of the identity: a deeper re-run of the same config is a
     different run, not a duplicate, and must not be skipped.
     """
+    h = r["hidden"]
     return (r["family"], r["protocol"], r["fold"], r["seed"], r["lr"],
-            tuple(r["hidden"]), bool(r["normalize"]), r.get("steps"))
+            tuple(h) if h is not None else None, bool(r["normalize"]),
+            r.get("steps"), r.get("huber_delta"))
 
 
 def load_done():
@@ -144,6 +162,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true",
                     help="small grid for a ~10 min smoke test")
+    ap.add_argument("--models", action="store_true",
+                    help="sweep model class (null/linear/mlp) and loss on the "
+                         "leave-one-tire-out protocol")
     ap.add_argument("--deep", action="store_true",
                     help="5x steps, 5 seeds, wider lr grid (~24-30 h on 10 "
                          "workers). Adds to existing results, never replaces.")
@@ -182,16 +203,22 @@ def main():
     import train
 
     grid = (QUICK["grid"] if args.quick else
+          MODELS["grid"] if args.models else
           DEEP["grid"] if args.deep else GRID)
     seeds = (QUICK["seeds"] if args.quick else
+          MODELS["seeds"] if args.models else
           DEEP["seeds"] if args.deep else SEEDS)
     n_folds = (QUICK["n_folds"] if args.quick else
+          MODELS["n_folds"] if args.models else
           DEEP["n_folds"] if args.deep else N_FOLDS)
     steps = (QUICK["steps"] if args.quick else
+          MODELS["steps"] if args.models else
           DEEP["steps"] if args.deep else STEPS)
     max_rows = (QUICK["max_rows"] if args.quick else
+          MODELS["max_rows"] if args.models else
           DEEP["max_rows"] if args.deep else MAX_ROWS)
     protocols = (QUICK["protocols"] if args.quick else
+          MODELS["protocols"] if args.models else
           DEEP["protocols"] if args.deep else PROTOCOLS)
     families = [f.strip() for f in args.families.split(",") if f.strip()]
 
@@ -210,8 +237,11 @@ def main():
                     splits, seeds, combos):
                 cfg = dict(combo, seed=seed, steps=steps, max_rows=max_rows,
                            clip=1.0)
+                cfg.setdefault("huber_delta", None)
                 key = (family, protocol, fold_name, seed, cfg["lr"],
-                       tuple(cfg["hidden"]), bool(cfg["normalize"]))
+                       tuple(cfg["hidden"]) if cfg["hidden"] is not None
+                       else None, bool(cfg["normalize"]), steps,
+                       cfg["huber_delta"])
                 planned.append((family, protocol, fold_name, split, recs, cfg,
                                 key))
 
@@ -244,7 +274,9 @@ def main():
         print("[%4d/%4d] %-13s %-8s %-22s lr=%-6g %-8s seed=%d  "
               "%-9s rmse=%s  %5.1fs  eta %.0f min"
               % (i, len(todo), family, protocol, fold_name, cfg["lr"],
-                 str(tuple(cfg["hidden"])), cfg["seed"], rec["status"],
+                 ("null" if cfg["hidden"] is None else
+                  "linear" if not cfg["hidden"] else str(tuple(cfg["hidden"]))),
+                 cfg["seed"], rec["status"],
                  ("%9.2f" % rmse) if rmse is not None else "      n/a",
                  time.time() - t0, eta / 60.0), flush=True)
 
@@ -271,6 +303,8 @@ def launch_workers(args):
     base = [sys.executable, "-u", "sweep.py", "--families", args.families]
     if args.quick:
         base.append("--quick")
+    if args.models:
+        base.append("--models")
     if args.deep:
         base.append("--deep")
     if args.force:
