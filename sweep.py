@@ -81,11 +81,11 @@ DEEP = {
 # Run on the 'spec' protocol only -- leave-one-tire-out is the protocol that
 # matches the actual goal, predicting parameters for a tire we have not tested.
 MODELS = {
-    "grid": {"lr": (1e-3, 1e-2),
+    "grid": {"lr": (1e-3,),
              "hidden": (None, (), (32, 32)),
              "normalize": (False,),
              "huber_delta": (None, 1.5)},
-    "seeds": (0,), "n_folds": 5, "steps": 1500, "max_rows": 6000,
+    "seeds": (0,), "n_folds": 5, "steps": 1000, "max_rows": 5000,
     "protocols": ("spec",),
 }
 
