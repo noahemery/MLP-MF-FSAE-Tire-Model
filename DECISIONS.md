@@ -266,3 +266,80 @@ diagnostics only.
 drift check), `verify_acceptance.py` (bitwise gate), `progress.py`
 (instrumentation, evaluation cap, power-throttling opt-out),
 `capture_reference.py`, `comment_out_live_blocks.py`.
+
+## 2026-09-14 — MX fitted; the PINN question for moments answered; pressure found
+
+Owner authorised fixing the moment code as needed and asked for least squares
+first, checking whether parameters vary between geometries before reaching for
+a PINN. Answer for MX: **no PINN needed**, and the reason is not what was
+expected.
+
+**`fit_MX` is linear in its three parameters**, so there is no seed, no
+iteration and no convergence question — `np.linalg.lstsq` gives the global
+optimum and an exact covariance. `cond(A)` is 87-127 across all specs.
+
+**MX covers all 6 tires, not the 4 that MZ is limited to.** `fit_MX` needs
+`gy_params` only through `F_y = Y * G_y`, and on cornering data `SL` is
+identically 0, where `G_y ≡ 1` and `S_vgy ≡ 0` — verified at `0.000e+00` for
+every fitted tire, and algebraically true since `u = B*(s + S_h)` reduces to
+`u0` at `s = 0`. So MX on pure-slip data needs only `lat_params`, and that
+includes the two cornering-only `160X75` specs — the tire the car runs.
+
+**Held-out MX error, GroupKFold by segment, as % of p95|MX|:**
+
+| tire | 3-param | + pressure terms |
+|---|---|---|
+| 160X75_R20_70 | 10.3% | 8.6% |
+| 160X75_R20_80 | 10.0% | 8.1% |
+| 205X70_R20_70 | 9.2% | 6.3% |
+| 205X70_R20_80 | 9.7% | 5.5% |
+| 180X60_R20_60 | 10.9% | 10.8% |
+| 180X60_R20_70 | 10.6% | 10.0% |
+| **mean** | **10.1%** | **8.2%** |
+
+**Why no PINN.** Fitting per (tire, pressure bin) gives a full 6x4 grid, all 24
+cells conditioned 89-127. `QSX3` falls monotonically with pressure in all six
+tires (~0.069 at 8 psi to ~0.044 at 14 psi); `QSX2` rises monotonically in all
+six. Spread across pressure vs across tire: `QSX3` 1.77 (pressure dominates),
+`QSX1` 0.80, `QSX2` 0.52 (geometry dominates). The variation is real, but it is
+smooth, monotone and one-dimensional — a linear pressure term in the physics
+captures it, which is what MF 6.x already does. `QSX3p` came out negative in all
+six tires (-0.034 to -0.052) and `QSX2p` positive in all six. A network over 24
+cells with three outputs would fit noise.
+
+The residual between-tire variation is genuine but is not monotone in diameter
+or in width, so with 3 sizes it is not learnable as a geometry trend — the same
+conclusion already reached for the force families.
+
+**A first read was wrong and is corrected here.** A single pooled fit gave
+significance ratios of 16-108 sigma, which assumed iid residuals across ~90k
+autocorrelated rig samples. Re-done with the segment as the unit, the honest
+ratios are 2.2-5.0. Per-segment fitting is itself the wrong unit for MX: a
+segment is load-sorted, so `F_z` is nearly constant inside it and the `QSX1` /
+`QSX3` columns go collinear. MX is only identifiable pooled across loads.
+
+**Incidental finding, larger than the moment work.** Every force spec pools
+**6-9 distinct inflation pressures** into one parameter set — `P` spans roughly
+45-101 kPa, a 2x range, and no fit reads the channel. `corr(P, F_z)` across 429
+segments is +0.028, so this is an independent variable, not a disguised load
+effect. The existing lateral / longitudinal / G_x / G_y residuals therefore
+contain unmodelled pressure variance. This raises pressure from "check whether
+it varies" to the most promising accuracy work available.
+
+`P` also shows the same channel-gating defect as `SL`: some files record
+`P = 0.0`. Filtered with `P > 1.0` throughout.
+
+**Scripts.** `analysis/mx_probe.py` (closed-form fit, all tires),
+`analysis/mx_variance.py` (variance components, segment as unit),
+`analysis/mx_pressure.py` (tire x pressure grid, load confound check),
+`analysis/mx_holdout.py` (GroupKFold held-out, with and without pressure).
+
+**Still open.** MZ is untouched and is the hard half: 9 params per segment then
+36 Q-params, with `np.sign()` in both `alpha_t` and `alpha_r`. MZ could also
+reach all 6 tires if `S_arm` is fixed at 0 for the cornering-only specs — |FX|
+there is only 3-4% of |FY|, so the `S_arm * F_x` term contributes little. That
+is a modelling choice for the owner, not one to take unilaterally.
+
+There is no `MY` channel in any file (confirmed by inspection of both
+`cornering_SI` and `straight_SI`: `MX` and `MZ` present, `MY` absent). `fit_MY`
+stays dead.
