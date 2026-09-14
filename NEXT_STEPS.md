@@ -1,157 +1,304 @@
-# Next steps
+# Refinement pass
 
-Updated 2026-08-28 after domain review. See `DECISIONS.md` for why things are
-the way they are. Figures: `python plots.py` writes `outputs/figures/`.
+Written 2026-09-14, after `tire_predict.py` shipped. Supersedes the earlier
+version of this file, which was written before William's new `magic.py` landed
+and before the `SL == 0` finding.
 
-## Domain rulings that changed the priorities
+## Where things stand
 
-Review feedback, which reframes several findings as non-issues:
+**Shipped and in use:** `tire_predict.py` — standalone numpy module, parameters
+embedded, verified bitwise identical to `magic.py` (0.000e+00). The team can
+use it today.
 
-- **High uncertainty in shift (H) and curve (E) parameters is expected** and
-  acceptable. Not a defect.
-- **K at 1.44-3.77 relative uncertainty is acceptable.** Discrepancies there
-  are attributable to the already-identified loose parameters.
-- **Rank deficiency is benign for curve and offset parameters.** It means those
-  parameters have no independent solution and must be expressed in terms of
-  others. That is a property of the parameterisation, not a broken fit.
-- **G factors are less critical.** They only adjust the pure lateral and
-  longitudinal fits for combined loading.
-- **The criterion that matters is whether the fits are suffering**, i.e. force
-  error against measured data, not parameter uncertainty.
+**Fit quality, all 18 specs, one clean run:**
 
-Consequence: the parameter-uncertainty work is deprioritised, and the question
-narrows to which fits are actually bad.
+| family | range |
+|---|---|
+| lateral | 3.2 - 4.7% |
+| longitudinal | 6.1 - 7.9% |
+| G_x | 8.2 - 8.8% |
+| G_y | 10.0 - 18.3% |
 
-## Fit quality, all 18 specs
+**The finding that shapes everything below:** geometry-based prediction does
+not generalise from this dataset. Leave-one-tire-out, held-out RMSE on a tire
+the model never saw:
 
-Force RMSE from the NLLS baseline, as a percentage of 95th-percentile force.
-
-| spec | family | % peak | verdict |
+| family | null (ignores geometry) | linear | mlp |
 |---|---|---|---|
-| lat_205X70_R20_80 | lateral | 3.2% | good |
-| lat_180X60_R20_70 | lateral | 3.8% | good |
-| lat_205X70_R20_70 | lateral | 4.1% | good |
-| lat_160X75_R20_70 | lateral | 4.5% | good |
-| lat_160X75_R20_80 | lateral | 4.5% | good |
-| lat_180X60_R20_60 | lateral | 4.7% | good |
-| GX_180X60_R20_70 | gx | 11.9% | marginal, low priority |
-| GY_205X70_R20_70 | gy | 11.9% | marginal, low priority |
-| GX_180X60_R20_60 | gx | 12.0% | marginal, low priority |
-| GY_180X60_R20_70 | gy | 12.6% | marginal, low priority |
-| long_180X60_R20_70 | longitudinal | 13.9% | marginal |
-| long_180X60_R20_60 | longitudinal | 14.2% | marginal |
-| GX_205X70_R20_80 | gx | 21.6% | bad, but a G factor |
-| GX_205X70_R20_70 | gx | 22.1% | bad, but a G factor |
-| GY_205X70_R20_80 | gy | 23.3% | bad, but a G factor |
-| **long_205X70_R20_70** | **longitudinal** | **27.1%** | **THE PROBLEM** |
-| **long_205X70_R20_80** | **longitudinal** | **29.7%** | **THE PROBLEM** |
-| GY_180X60_R20_60 | gy | 36.9% | bad, but a G factor |
+| lateral | **128** | 822 | 157 |
+| longitudinal | 194 | **190** | 201 |
+| gx | 204 | 200 | **150** |
+| gy | **176** | 641 | 270 |
 
-**All six lateral fits are good.** Every failure is straight-line data, and
-five of six trace to runs 51/52/54/55, the 20.5X7.0-13 tire.
-
-Given G factors are less critical, **the two `long_205X70` fits are the only
-genuinely blocking failures.** They are pure longitudinal slip, they feed the
-G_x layer beneath them, and at 27-30% they are not usable for braking or
-acceleration.
+A model that ignores tire geometry entirely wins on lateral and G_y. With 6
+tires across 3 sizes there is not enough spread to learn a size trend. The
+shipped module therefore offers per-tire parameters and a pooled fallback,
+not a geometry predictor.
 
 ---
 
-## P1. Fix the two long_205X70 fits
+## P1. Hierarchical (partial pooling) model
 
-**The whole job, essentially. Runs 51, 52, 54, 55.**
+**The one idea likely to beat what we have. ~1 day.**
 
-Evidence that this is data, not code:
+The null model wins because pooling helps. Per-tire NLLS wins where a tire has
+rich data. Those are not opposites — they are the two ends of a single
+spectrum, and nothing has tried the middle.
 
-- The same code, same segmentation literals and same parameter families give
-  14% on runs 69/70/72/73 and 27-30% on 51/52/54/55.
-- Fitted parameters are near-identical across all four longitudinal specs
-  (PDX1 2.2-2.4, PCX1 1.6-1.7, PKX1 50-60), so no fit diverged.
-- The same source runs also produce the two worst G_x fits, so three
-  independent fitting paths fail on the same files.
-- Learning rate and capacity change nothing: 678.1 -> 677.4 -> 676.1 N across
-  lr 1e-4 to 1e-2. Not an optimisation problem.
-- A camber hypothesis was tested and **rejected** — error at IA~0 is worse
-  (745 N) than at 2 or 4 degrees (641 / 655 N).
-
-Do, in order:
-
-1. **Look at `outputs/figures/fig4_problem_runs.png`.** It puts
-   `long_205X70_R20_70` (27%) beside `long_180X60_R20_60` (14%): measured vs
-   modelled F_x against slip ratio, residual against load, and load coverage.
-   Whatever is different should be visible.
-2. **Check what segmentation admits from each run** — segment count, rows per
-   segment, load levels, slip-ratio range. If runs 51/52 need different
-   `sort`/`bound` literals than the other straight runs, that is a finding for
-   the owner, not something to change unilaterally.
-3. **Read the channels nothing currently uses.** The `.mat` files carry `P`
-   (pressure), `V` (speed) and four temperature channels. If 51/52/54/55 were
-   run at a different pressure or ran hotter, a camber-blind, pressure-blind
-   `tm_long` cannot represent it and the residual is structural.
-
-Success: `long_205X70` reaching the ~14% the other two longitudinal fits
-achieve. That would make pooled longitudinal usable and lift G_x with it.
-
-## P2. Rulings still needed from the owner
-
-Three block the differentiable transcription, one changes results:
-
-1. `tm_long:1063-1067` trailing commas making five variables 1-tuples.
-2. `tm_lat:1027` missing the `1e-8` guard that `second_pass_y:296` has. This is
-   now on the neural training path.
-3. `first_pass_GY:1379` multiplying a 6-tuple by an array.
-4. **Which `E_y` is intended** — `second_pass_y:298` and `tm_lat:1029` use
-   different `np.sign()` arguments. The force objective uses `tm_lat`'s.
-
-`mf_torch.py` works around 1 and 3 and transcribes 2 as-is; all are documented
-in its module docstring.
-
-## P3. G_y, if it becomes worth it
-
-`GY_180X60_R20_60` is the worst fit at 36.9% and the worst rank deficiency
-(12/15). Its source runs 69/70 produce fine longitudinal and G_x fits, so this
-is specific to G_y. Two candidate causes are already known: camber read from
-the `SA` channel instead of `IA` (`first_pass_GY:1364`), and all four G_y
-second passes stopping at `max_nfev=1e2` rather than converging.
-
-Low priority while G factors are considered less critical, but it is the one
-place where a known defect and a bad fit coincide.
-
-## P4. More tires
-
-Lateral has 3 tire sizes, longitudinal and combined have 2. `R20` is constant
-across the dataset so it carries no information, and `C2000` appears only on
-the 16.0X7.5-10, confounding compound with size.
-
-The 5.1% unseen-tire lateral result is good *because* lateral has three sizes.
-Two sizes is barely a slope. No training change fixes this.
-
-## Deprioritised
-
-- **Parameter-uncertainty analysis.** Per the domain review, loose H, E and K
-  are expected. Not worth a day.
-- **Deep sweep.** Evidence says the ceiling is not in training.
-- **Pressure as a feature.** Still additive, but read P1 step 3 first — it may
-  turn out to be the cause rather than an enhancement.
-
-## How to see the results
+Fit per-tire parameter vectors `theta_i` directly (no geometry input), with a
+penalty pulling them toward their shared mean:
 
 ```
-python plots.py           # writes outputs/figures/
+loss = sum_i  force_error(theta_i)  +  lambda * sum_i ||theta_i - theta_bar||^2
 ```
 
-| figure | question it answers |
-|---|---|
-| `fig1_tire_curves` | Does the fitted curve match the measured tire? |
-| `fig2_fit_quality` | Which of the 18 fits are good, which are suffering? |
-| `fig3_pred_vs_meas` | How tight is the model overall, per family? |
-| `fig4_problem_runs` | What is different about the straight runs that fail? |
-| `fig5_neural_vs_nlls` | Does the geometry network beat per-tire fitting? |
+- `lambda -> 0` reproduces per-tire NLLS
+- `lambda -> infinity` reproduces the null model
+- the optimum is expected in between, and `lambda` is chosen by
+  leave-one-tire-out
 
-## Verification
+Why this should work: a well-measured tire keeps its own parameters, a
+poorly-constrained one borrows from the pool. That is exactly the failure mode
+we measured — the linear model scored 822 N on lateral against the null's 128
+because it had no shrinkage at all and extrapolated wildly off three points.
 
-- P1 — recompute per-spec fit quality; success is `long_205X70` at ~14%.
-- P2/P3 — `mf_torch.py` must still pass its gate at 1e-10, and
-  `verify_acceptance.py` must still be bitwise if `magic.py` is touched.
-- Always — `audit_literals.py` reports all 18 blocks matching, and no result is
-  quoted as geometry generalisation unless it comes from the `spec` protocol.
+**Implementation.** Reuses the existing training loop. Replace `ParamNet`'s
+geometry input with a free embedding, one vector per tire, initialised at the
+pooled mean, plus the pooling penalty. Scale the penalty per parameter by the
+baseline spread already computed in `train.baseline_stats`, otherwise `PKY1`
+(~4.8e3) dominates `PHY1` (~1e-3).
+
+**Verification.** Leave-one-tire-out against both existing baselines. Success
+is beating `min(null, per-tire NLLS)` on at least two families. If the best
+`lambda` comes out at the extreme, that is also a result — it says the two
+regimes do not blend and the current approach is already the right one.
+
+**Optional extension, only if the above works:** add geometry back as a
+correction on top of the shared mean, `theta_i = theta_bar + f(geom_i)`. Do
+not start here; geometry has already been shown not to carry.
+
+## P2. Moments — MX then MZ
+
+**~1 day, but the two halves are very unequal. William is waiting on this.**
+
+All four moment functions are fixed and callable. **None of them is called
+anywhere in `magic.py`** — there is no fitting block for any moment, and no x0
+seed or bound exists for any of them. Every other family has both in its block.
+These have to be invented, and that should be flagged as mine, not William's.
+
+**Read the function names carefully before starting.** They do not mean what
+they say:
+
+| function | actually fits | params | structure |
+|---|---|---|---|
+| `fit_MX` | overturning moment MX | 3 (QSX1-3) | single stage, all segments at once |
+| `first_pass_MX` | **MZ**, not MX — it reads `data["MZ"]` | 9 per segment | first pass |
+| `second_pass_MZ` | MZ | 36 Q-params | second pass |
+| `fit_MY` | rolling resistance | 2 | **dead**, no `MY` channel |
+
+**P2a. MX first — this is a genuinely cheap win.** `fit_MX` is linear in its
+three parameters:
+
+```
+M_x = F_z * R_0 * (QSX1 - QSX2 * gamma + QSX3 * F_y / F_z0)
+```
+
+No `arctan`, no shape factors, no two-stage structure, no segment loop to
+orchestrate. Standard MF starting values (`QSX1` ~ 0, `QSX2` ~ 1, `QSX3` ~ 0.01)
+should be close, and because the residual is linear in `x` the Jacobian is
+constant — none of the flat-region convergence trouble that plagues the force
+second passes can occur here. Expect this in under an hour, with a real error
+number at the end of it.
+
+**P2b. MZ second — this is the hard one.** Nine parameters per segment, then 36
+Q-params, with `np.sign()` inside both `alpha_t` and `alpha_r`. That is the same
+construct already suspected of wrecking the lateral second pass's Jacobian under
+finite differences, and here it appears twice. Budget generously and expect the
+seeds to need several attempts.
+
+Seeds to start from: pneumatic trail `D_t` ~ 0.03 m, shape factors `C_t`/`C_r`
+~ 1.5, residual torque `D_r` scaled off measured peak MZ, `S_arm` and `S_ht`
+~ 0.
+
+**Coverage limit — both moments, not just MZ.** `fit_MX` needs `lat_params` and
+`gy_params`; MZ needs all four force families. G_y is fitted from straight runs,
+so both moments are limited to the same 4 of 6 tires: `180X60_R20_60`,
+`180X60_R20_70`, `205X70_R20_70`, `205X70_R20_80`. Both `160X75` specs are
+cornering-only — and that includes the tire the team actually runs. Say this
+plainly when handing the numbers over; a moment model that excludes the car's
+own tire needs to be labelled as such.
+
+**Steps:**
+1. MX block: case selection, seeds, bounds, run all 4 specs, report error
+2. Extend `audit_literals.py` to cover the new block before moving on
+3. MZ first pass per segment, then the 36-parameter second pass
+4. Error quantification for both, in the same normalised form as the force
+   families so the numbers sit in one table
+5. Extend `tire_predict.py` with `overturning_moment()` and
+   `aligning_moment()`, same raise-on-unknown-tire behaviour as v1
+
+**Also worth raising with William:** `first_pass_MX` fitting MZ is confusing
+enough to cause a real mistake later. Ask whether it can be renamed
+`first_pass_MZ`. That is a rename, not a physics change, so it needs his
+approval but not a judgement call.
+
+## P3. Pressure as a feature
+
+**~half a day, genuinely unexploited.**
+
+The `.mat` files carry a `P` channel that **nothing currently reads**. Later
+Pacejka versions have explicit pressure terms.
+
+**Check before building:** does `P` vary meaningfully within and across runs?
+If it was held constant there is no signal and this stops immediately. If it
+drifted, it is unmodelled variance currently being absorbed as fit error.
+
+This will not help geometry prediction. It could reduce per-tire error, which
+is what the shipped model actually uses.
+
+## P4. Optimisation quality
+
+**~half a day, uncertain payoff.**
+
+The second passes terminate on `ftol` in flat regions — `lat_180X60_R20_70`
+improved cost by 0.021% across 27,108 evaluations, and that is with tolerances
+at 2.3e-16, below double epsilon. Multi-start from several seeds might find
+better optima, particularly on G_y.
+
+Cheap to test, and a null result is still worth recording.
+
+## P5. Revisit the G-correction penalty
+
+The penalty William authorised is a measured trade, not a clean win:
+
+- `GY_180X60_R20_60` went from rank 12/15 with an **infinite** condition number
+  to full rank 15/15
+- two other G_y specs dropped 15/15 to 14/15, condition numbers rose 3-4 orders
+- force error rose ~10%
+- G_x is completely unaffected; the penalty never fires there
+
+Worth revisiting once the hierarchical model exists, since shrinkage may make
+the penalty unnecessary.
+
+---
+
+## The deliverable: `tire_predict.py` v2
+
+Everything above is only worth doing if it lands in the module the team
+imports. What v2 adds over what shipped today:
+
+| addition | comes from | if it fails |
+|---|---|---|
+| `aligning_moment(F_z, slip_angle_deg, slip_ratio, camber_deg, tire)` | P2 | omitted; v1 API unchanged |
+| `overturning_moment(...)` | P2 | omitted |
+| better per-tire parameters for weak specs | P1, P3, P4 | keep v1 values |
+| `param_uncertainty(tire, family)` returning per-parameter std | already computed | keep, it is free |
+| improved pooled fallback | P1 | keep v1 null-model fallback |
+
+**Backwards compatibility is a hard requirement.** `lateral_force`,
+`longitudinal_force`, `combined_force`, `get_params` and `available_tires` keep
+their signatures and their behaviour. Anyone who wrote lap-sim code against v1
+must not have to change it. New capability arrives as new functions and
+better numbers, never as a changed interface.
+
+The `param_uncertainty` item is worth calling out: the asymptotic covariance
+`residual_variance * pinv(J'J)` is already computed and recorded per spec. It
+is not exposed. Surfacing it costs nearly nothing and tells the team which
+parameters to distrust, which is more useful than a smaller error number.
+
+## Sequencing
+
+Four working sessions. Each ends with something committed and verified, so
+stopping after any one of them leaves the repo in a shippable state.
+
+**Session 1 — cheap checks first, before committing to anything expensive**
+- Read the `P` channel, plot its distribution per run. Decide P3 go / no-go in
+  the first 20 minutes
+- Multi-start test (P4) on the three weakest G_y specs only, not all 18
+- Send William the five questions below
+- Commit whatever measurements come out, even null results
+
+**Session 2 — the hierarchical model (P1)**
+- Implement the embedding + pooling penalty in `train.py`
+- Sweep `lambda` over a log grid under leave-one-tire-out
+- Compare against both baselines on all four families
+- Decision gate: if it does not beat `min(null, NLLS)` on at least two
+  families, stop here and record the negative result. Do not iterate on it
+
+**Session 3 — moments (P2)**
+- MX first. It is 3 linear parameters and should be done inside an hour, which
+  means the session produces a result even if everything after it stalls
+- Then MZ: seeds, bounds, first pass, 36-parameter second pass
+- Extend `audit_literals.py` to cover both new blocks
+- This is the session most likely to overrun. MX is nearly free; MZ is
+  unfitted work with invented seeds and `np.sign()` in the residual
+
+**Session 4 — export and hand off**
+- Regenerate all 18 specs in one clean run from the winning configuration
+- Rebuild `tire_predict.py` v2, re-verify at 0.000e+00
+- Update `USAGE.md` with moments, units and the new accuracy table
+- Send the team the same two files as before
+
+**Ordering rationale.** P1 before P2 because P1 might change every parameter
+the module embeds, and rebuilding the export twice is wasted work. P3 and P4
+first because they are cheap and their answers are inputs to P1.
+
+## Decision gates
+
+Stop and report rather than pushing through, at each of these:
+
+- **P3, after 20 minutes** — if `P` is constant, abandon it entirely
+- **P1, after the `lambda` sweep** — if the optimum sits at either extreme, the
+  answer is that shrinkage does not blend these regimes. Record it and move on
+- **P2, if seeds will not converge** — moments are genuinely unfitted work, not
+  a refactor. If physically-motivated seeds do not produce sane pneumatic
+  trail, this needs William, not more optimiser tuning
+- **Any regression in the four force families** — v1 numbers are the floor.
+  A change that improves moments and degrades lateral does not ship
+
+## Open questions for William
+
+1. **Which `E_y` is intended** — `second_pass_y:298` and `tm_lat:1029` use
+   different `np.sign()` arguments. Asked three times, never answered. Affects
+   every lateral fit, which is our best family.
+2. **The penalty threshold** — he said penalise when G exceeds *zero*;
+   implemented as `> 1` because the G corrections are positive by construction
+   so `> 0` penalises every point. Never confirmed.
+3. **Moment starting values** — none exist in his file, for MX or MZ. Confirm
+   mine are acceptable once written, or supply his own.
+4. **The dead `x[8]`** removed from `first_pass_MX` — `S_vy` was overwritten by
+   the `tm_lat` unpacking before use. Confirm it was not meant to do something.
+5. **Moments covering only 4 of 6 tires** — both MX and MZ need G_y, which the
+   two cornering-only `160X75` specs do not have. Acceptable, given that is the
+   tire the car runs?
+6. **Rename `first_pass_MX` to `first_pass_MZ`** — it reads `data["MZ"]` and
+   fits pneumatic trail. A rename only, no physics touched.
+
+## Not doing, and why
+
+- **More seeds, folds, or training steps** — measured repeatedly; the
+  conclusions are already unambiguous and compute is not the constraint
+- **Bigger networks** — the MLP already loses to a constant on half the
+  families
+- **Huber loss** — tested at William's suggestion; a wash (354 vs 371 on G_y,
+  identical elsewhere). His instinct about outliers was right, but they were
+  the `SL == 0` samples, and excluding those directly already captured the
+  benefit
+- **Transient / relaxation-length modelling** — nothing in the stack is
+  anything but steady-state. Real future work, deliberately out of scope
+
+## What would help most but cannot be done here
+
+**More tire sizes.** Three sizes is precisely why geometry prediction fails.
+Worth raising before the next TTC round, along with **wider slip-angle sweeps
+on the straight runs** — the narrow -6 to -3 degree window is what limits
+`GY_180X60_R20_60` to 18.3% and leaves its parameters unidentifiable.
+
+## Verification standards — carry these forward
+
+- `python tire_predict.py` must report 0.000e+00 against `magic.py`
+- `python mf_torch.py` must pass at 1e-10
+- `python audit_literals.py` must report all 18 blocks matching source
+- Held-out metrics only, GroupKFold by segment. Never quote in-sample RMSE
+- `spec` protocol (leave-one-tire-out) is the only protocol that speaks to
+  geometry generalisation. Never quote `segment` numbers as evidence for it
