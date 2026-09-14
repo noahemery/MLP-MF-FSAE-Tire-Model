@@ -134,8 +134,8 @@ own tire needs to be labelled as such.
 3. MZ first pass per segment, then the 36-parameter second pass
 4. Error quantification for both, in the same normalised form as the force
    families so the numbers sit in one table
-5. Extend `tire_predict.py` with `overturning_moment()` and
-   `aligning_moment()`, same raise-on-unknown-tire behaviour as v1
+5. Extend `tire_predict.py`, against whichever interface Session 1 settled on.
+   Moments are the reason the interface question has to be answered first
 
 **Also worth raising with William:** `first_pass_MX` fitting MZ is confusing
 enough to cause a real mistake later. Ask whether it can be renamed
@@ -189,17 +189,64 @@ imports. What v2 adds over what shipped today:
 
 | addition | comes from | if it fails |
 |---|---|---|
-| `aligning_moment(F_z, slip_angle_deg, slip_ratio, camber_deg, tire)` | P2 | omitted; v1 API unchanged |
-| `overturning_moment(...)` | P2 | omitted |
+| `Tire.aligning_moment(...)` / `r.M_z` from `Tire.combined` | P2 | omitted, no other item depends on it |
+| `Tire.overturning_moment(...)` | P2 | omitted |
 | better per-tire parameters for weak specs | P1, P3, P4 | keep v1 values |
 | `param_uncertainty(tire, family)` returning per-parameter std | already computed | keep, it is free |
 | improved pooled fallback | P1 | keep v1 null-model fallback |
 
-**Backwards compatibility is a hard requirement.** `lateral_force`,
-`longitudinal_force`, `combined_force`, `get_params` and `available_tires` keep
-their signatures and their behaviour. Anyone who wrote lap-sim code against v1
-must not have to change it. New capability arrives as new functions and
-better numbers, never as a changed interface.
+### The API question, settled
+
+An earlier draft of this plan froze v1's interface outright. That was too
+strong, for two reasons.
+
+**First, the freeze is barely binding.** Of the five refinement items, only P3
+touches a signature at all, and it does so with a defaulted keyword
+(`pressure_kpa=<nominal test pressure>`) that reproduces v1 behaviour exactly
+when omitted. P1, P4 and P5 change parameter *values*, not shapes. P2 and
+`param_uncertainty` add new functions. Better numbers through the same five
+functions is not an API change.
+
+**Second, there is one genuine reason to break it, and it falls inside this
+pass.** `combined_force` returns a bare tuple `(F_x, F_y)`. Once moments exist,
+combined output naturally wants to carry `F_x, F_y, M_z, M_x` — which under the
+current shape means returning a 4-tuple and silently breaking every
+`fx, fy = combined_force(...)` already written. Holding v1's shape here would
+force a worse design, not merely a smaller one.
+
+**So: redesign is allowed, but it happens before P2, not after.** Adoption is
+currently near zero — nothing in this repo imports `tire_predict`, and the only
+copies are the two files sent to the team on 2026-09-14. That makes now the
+cheapest moment this will ever be.
+
+Order of operations:
+
+1. Ask the team whether anyone has written lap-sim code against v1 yet
+2. **If no:** change the interface outright, in Session 1, before moments land
+3. **If yes:** keep the five v1 functions as three-line deprecation wrappers
+   over the new design. ~15 lines, and no constraint on the new design
+4. **Do not** ship a second module alongside the first. Two files both claiming
+   to be the tire model means two sets of embedded literals to keep verified
+   against `magic.py`, and they will drift
+
+The intended v2 shape, resolving the tire once rather than per call:
+
+```python
+t = tp.Tire("205X70_R20_70")
+fy = t.lateral_force(F_z, slip_angle_deg)
+r  = t.combined(F_z, slip_angle_deg, slip_ratio)   # r.F_x, r.F_y, r.M_z
+```
+
+This drops the `tire=None, allow_fallback=False` pair from every signature,
+moves the unknown-tire check and the low-confidence warning to construction
+time instead of once per loop iteration, and gives combined output named fields
+so moments can be added later without breaking callers. The lap sim calls these
+in a tight loop, so hoisting the dict lookup out of it is a minor speed win as
+well.
+
+What does **not** change under any option: the parameters stay embedded as
+literals, the module stays numpy-only with no `magic.py` import, and
+`python tire_predict.py` still has to report 0.000e+00.
 
 The `param_uncertainty` item is worth calling out: the asymptotic covariance
 `residual_variance * pinv(J'J)` is already computed and recorded per spec. It
@@ -212,10 +259,13 @@ Four working sessions. Each ends with something committed and verified, so
 stopping after any one of them leaves the repo in a shippable state.
 
 **Session 1 — cheap checks first, before committing to anything expensive**
+- Ask the team whether anyone has written code against v1 yet, then settle the
+  interface per the section above. This has to happen before P2, because moments
+  are what force the `combined_force` return shape to change
 - Read the `P` channel, plot its distribution per run. Decide P3 go / no-go in
   the first 20 minutes
 - Multi-start test (P4) on the three weakest G_y specs only, not all 18
-- Send William the five questions below
+- Send William the six questions below
 - Commit whatever measurements come out, even null results
 
 **Session 2 — the hierarchical model (P1)**
