@@ -343,3 +343,94 @@ is a modelling choice for the owner, not one to take unilaterally.
 There is no `MY` channel in any file (confirmed by inspection of both
 `cornering_SI` and `straight_SI`: `MX` and `MZ` present, `MY` absent). `fit_MY`
 stays dead.
+
+## 2026-09-14 — MX shipped; MZ blocked on a physics decision
+
+### MX: done
+
+`magic.fit_MX` **raised for all 6 tires** before this. It accumulated residuals
+with `np.vstack` over arrays already `.squeeze()`d to 1-D, so vstack treated
+them as rows and demanded equal segment lengths (they run 1037-1049). The
+second passes escape this because they stack un-squeezed `(n,1)` columns. Now
+`np.concatenate`. `fit_MY` given the same fix for consistency; it stays dead.
+
+Shipped as `tire_predict.overturning_moment()`, all 6 tires, with an optional
+`pressure_kpa`. Held-out 10.1% mean without pressure, 8.2% with. The v1 API is
+unchanged — this is a new function, so nothing the team wrote needs touching.
+
+Pipeline now carries 30 specs: the original 18, plus `MX_*` (canonical, 3
+params, exactly `fit_MX`) and `MXP_*` (pressure-extended, 6 params, an
+extension held outside `magic.py` pending the owner's review).
+
+`verify_mx.py` is the gate that makes the closed-form solve legitimate: per
+tire, `magic.fit_MX`'s own residual at our solution matches the linear system
+(~1e-14), and `least_squares` driven by `magic.fit_MX` from a neutral seed
+reaches the same parameters (~1e-13). All 6 pass.
+
+### MZ: runs, but B_t is not identifiable
+
+The first pass (`first_pass_MX`, which despite its name fits MZ) now runs, and
+the invented seeds land in the right basin — `D_t` comes out 0.022-0.064 m,
+mean ~0.043 m, a physically plausible pneumatic trail, not at a bound.
+
+Two findings, both measured on `205X70_R20_70`, 12 segments:
+
+**`S_arm` carries no information on pure-slip data.** Fixing it at 0 moves the
+error from 23.6% to 23.9%, i.e. nothing. That is expected: `SL` is identically
+0 on cornering data and |FX| is only 3-4% of |FY|, so `S_arm * F_x` has nothing
+to fit. Freeing it just sends it to a bound (8 of 12 segments). Dropping it also
+removes MZ's **only** dependence on `long_params` and `gx_params` on this data,
+which is what would let MZ cover all 6 tires instead of the 4 with
+straight-line runs.
+
+**`B_t` chases whatever bound it is given.** With `S_arm` fixed and the shape
+bounds widened:
+
+| B_t upper bound | error | B_t mean | B_t range |
+|---|---|---|---|
+| 200 | 13.0% | 180 | 5 - 200 |
+| 1,000 | 16.1% | 794 | 217 - 1,000 |
+| 5,000 | 12.8% | 2,397 | 158 - 5,000 |
+
+Two orders of magnitude of `B_t` for a flat error. `B_t` enters as
+`arctan(B_t * alpha_t)`, which saturates, so it is only identifiable if the data
+resolves the low-slip region where `B_t` sets the initial slope of the trail
+curve. It does not.
+
+**Choosing a bound here would be choosing a parameter value, not measuring
+one**, so MZ stops here rather than shipping a fabricated number. Widening the
+original bounds was worth it regardless: 23.6% to 13.0%, with the at-bound
+count dropping from 7 parameters to 1.
+
+Options for the owner, in preference order:
+1. Tie `B_t` to the lateral stiffness rather than fitting it free, which is
+   standard MF practice and would make the trail curve identifiable.
+2. Fix `B_t` at a stated value and document the fit as conditional on it.
+3. Accept ~13% with `B_t` pinned at a bound, labelled non-identified.
+
+`analysis/mz_identifiability.py` reproduces the table.
+
+### The acceptance gate is stale, and has been since 2026-09-09
+
+`verify_acceptance.py` fails, and **not because of anything in this work.** Its
+reference was captured from the ORIGINAL `magic.py` in August. Since then
+William's September file appends tire diameter to the pure-slip vectors, so the
+reference lateral vector is 23 long against the current 24 — a structural
+mismatch, not drift. The 14 authorised fixes and the `SL == 0` filter also move
+fitted values.
+
+Confirmed not a regression: `HEAD`'s `magic.py` already produced 24 elements
+before this work, and this work's `magic.py` diff is two hunks inside `fit_MX`
+and `fit_MY`, which no force fit calls. The gate's message now says this instead
+of "a literal drifted".
+
+The live guard is `audit_literals.py`, which parses `magic.py`'s source text for
+all 18 blocks, needs no stored artifact, and passes. Recapturing the reference
+needs the two live blocks un-commented and ~25 minutes; worth doing but it
+guards less than the audit does.
+
+### Also
+
+`export_params.py` now generates the team-facing CSVs from the parquet. They
+were previously produced by a hand-run scratch script, so the files the team was
+sent could not be reproduced.
