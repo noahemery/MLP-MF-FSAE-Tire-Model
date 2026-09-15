@@ -92,6 +92,15 @@ def sensitivity(J, resid, theta, free):
 
 
 def main():
+    # Windows throttles unattended background processes to a few percent of a
+    # core (DECISIONS.md: the same fit went 22 min -> 23 h). ~430 segment fits
+    # is exactly that shape of job, so opt out explicitly.
+    try:
+        import progress
+        progress.keep_hot()
+    except Exception as exc:                            # not fatal, just slow
+        print("could not opt out of power throttling: %r" % (exc,), flush=True)
+
     rows, notes = [], []
     for tire in TIRES:
         neglect = tire in NEGLECT_FX
@@ -117,6 +126,8 @@ def main():
 
         x0 = X0[free]
         lo, hi = LOWER[free], UPPER[free]
+        print("  %-16s %3d segments, %d free params..."
+              % (tire, len(cases), len(free)), flush=True)
         for si, case in enumerate(cases):
             f = residual_fn(case, lat, lng, gx, gy, neglect)
             r = least_squares(f, x0, jac='3-point', method='trf',
@@ -141,6 +152,8 @@ def main():
             for k, j in enumerate(free):
                 rec["sens_" + NAMES[j]] = float(rel[k])
             rows.append(rec)
+            if (si + 1) % 20 == 0:
+                print("      %d/%d" % (si + 1, len(cases)), flush=True)
 
     df = pd.DataFrame(rows)
     os.makedirs("outputs", exist_ok=True)

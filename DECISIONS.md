@@ -434,3 +434,84 @@ guards less than the audit does.
 `export_params.py` now generates the team-facing CSVs from the parquet. They
 were previously produced by a hand-run scratch script, so the files the team was
 sent could not be reproduced.
+
+## 2026-09-15 — MZ first pass: the sensitivity study
+
+Owner's direction, 2026-09-14: "you can neglect FX for the tires with no data,
+the point of this first pass is to do a sensitivity study anyways. Into the
+future it should be reintroduced once a PINN is utilized."
+
+Implemented exactly to that scope. F_x is neglected **only** for the two
+`160X75` specs, which have no longitudinal or G_x fit; the other four keep
+`S_arm` free because they have the data. 429 segments across all 6 tires.
+
+**F_x independence is exact, not approximate.** With `S_arm = 0` the residual
+must not depend on which long/gx vectors are passed in (they are still needed
+because `first_pass_MX` computes G_x unconditionally). Fitting with two
+different donor tires' vectors gives bit-identical residuals, `max|delta| =
+0.0e+00`, for both tires. So MZ genuinely needs no straight-line data for those
+specs, which is what puts MZ on all 6 tires rather than 4.
+
+**Fit diagnostics, NOT a performance result.** These are in-sample per-segment
+residuals. MZ has no held-out number yet, because the thing that would
+generalise is the second pass, which is not run.
+
+| tire | segments | rmse | % of p95 abs MZ |
+|---|---|---|---|
+| 160X75_R20_70 | 90 | 5.93 Nm | 13.3% (F_x neglected) |
+| 160X75_R20_80 | 84 | 6.01 Nm | 14.5% (F_x neglected) |
+| 205X70_R20_70 | 51 | 8.51 Nm | 13.7% |
+| 205X70_R20_80 | 43 | 8.45 Nm | 14.0% |
+| 180X60_R20_60 | 76 | 7.57 Nm | 16.2% |
+| 180X60_R20_70 | 85 | 7.47 Nm | 16.8% |
+
+**Pneumatic trail is physically sane, which is the result that matters most.**
+`D_t` medians run 0.030-0.042 m across tires, never at a bound in any of the 429
+segments. A real FSAE pneumatic trail is a few centimetres. The invented seeds
+are therefore in the right basin, and the model is fitting the physics it is
+supposed to.
+
+**Sensitivity ranking**, median of `||dr/dtheta_j|| * |theta_j| / ||r||` over all
+429 segments — how much the residual moves for a proportional change in each
+parameter:
+
+| rank | param | sensitivity | at bound |
+|---|---|---|---|
+| 1 | `E_t` | 82.3 | 1% |
+| 2 | `C_t` | 36.0 | 0% |
+| 3 | `B_t` | 4.05 | **51%** |
+| 4 | `D_t` | 2.56 | 0% |
+| 5 | `D_r` | 1.88 | 0% |
+| 6 | `C_r` | 1.45 | 8% |
+| 7 | `S_arm` | 0.44 | 32% |
+| 8 | `B_r` | 0.35 | 2% |
+| 9 | `S_ht` | 0.29 | 2% |
+
+So the trail shape terms (`E_t`, `C_t`) dominate by one to two orders of
+magnitude; the residual-torque terms (`B_r`, `C_r`) and the shifts (`S_ht`,
+`S_arm`) are the weakest. If the second pass needs parameters reduced, the
+bottom three are where to cut.
+
+**Refinement of the earlier `B_t` claim.** The Jacobian comes out full rank in
+400 of 429 segments (rank-deficient in 29), median condition 2.67e+05, p90
+2.27e+07. So `B_t` is not literally unidentifiable in the local sense — the
+residual does respond to it, ranked 3rd. The operative problem is different and
+still holds: **`B_t` sits at its upper bound in 51% of segments** (per tire:
+32-67%), and the earlier bound sweep showed it tracking the cap from 180 to
+2,397 with the error flat at 13-16%. The optimum wants to be outside any bound
+set for it, so its value is chosen by the bound rather than measured. Full rank
+evaluated at a boundary-held point is weak evidence against that, not strong.
+
+Conclusion unchanged for shipping purposes: MZ parameters stay conditional on a
+stated `B_t` bound and are not presented as measured, pending the owner's
+choice. Preferred option remains tying `B_t` to the lateral stiffness.
+
+`analysis/mz_first_pass.py` writes `outputs/mz_first_pass.parquet` (429 rows,
+per-segment parameters, sensitivities, at-bound flags, Jacobian diagnostics).
+
+**Process note.** Two launch failures preceded this run, both mine and neither
+in the analysis: piping through `grep | tail` (tail cannot emit until stdin
+closes, so backgrounding it discarded everything), then `nohup ... &` (the
+process dies with the tool's shell). The script also now calls
+`progress.keep_hot()`, since ~430 unattended fits is exactly the EcoQoS
+throttling case recorded above.
