@@ -79,7 +79,38 @@ not start here; geometry has already been shown not to carry.
 
 ## P2. Moments — MX then MZ
 
-**~1 day, but the two halves are very unequal. William is waiting on this.**
+**MX is DONE and shipped (2026-09-14). MZ's first pass is a sensitivity study,
+per the owner's direction, and is blocked on one decision.**
+
+Status:
+
+| piece | state |
+|---|---|
+| `fit_MX` vstack defect | fixed; it raised for all 6 tires before this |
+| MX canonical (`MX_*`) | fitted, all 6 tires, held-out 10.1% |
+| MX pressure-extended (`MXP_*`) | fitted, held-out 8.2%, awaiting owner review |
+| `tire_predict.overturning_moment()` | shipped, v1 API untouched |
+| `verify_mx.py` | gate passes 6/6 |
+| MZ first pass | runs; `S_arm` dropped where no F_x data, per owner |
+| MZ `B_t` | **not identifiable** — needs the owner's decision |
+| MZ second pass (36 Q-params) | not started, deliberately |
+
+**Owner's direction, 2026-09-14:** F_x may be neglected for the tires with no
+longitudinal data — the two `160X75` specs — because the first pass is a
+sensitivity study. F_x is to be reintroduced once a PINN is in use. The other
+four tires keep `S_arm` free, since they have the data.
+
+The `B_t` decision is the one thing still blocking a shippable MZ parameter set.
+It follows whatever upper bound it is given across two orders of magnitude for a
+flat residual, because it sits inside `arctan(B_t * alpha_t)`, which saturates.
+Three options were put to him, the first preferred: tie `B_t` to the lateral
+stiffness rather than fit it free. Until that is answered, MZ parameters are
+reported as conditional on a stated bound, never as measured.
+
+Do not run the second pass before that is settled — it would propagate an
+unconstrained parameter into 36 more.
+
+**Original scoping notes, kept for reference:**
 
 All four moment functions are fixed and callable. **None of them is called
 anywhere in `magic.py`** — there is no fitting block for any moment, and no x0
@@ -142,19 +173,36 @@ enough to cause a real mistake later. Ask whether it can be renamed
 `first_pass_MZ`. That is a rename, not a physics change, so it needs his
 approval but not a judgement call.
 
-## P3. Pressure as a feature
+## P3. Pressure — CONFIRMED, and now the best remaining lead
 
-**~half a day, genuinely unexploited.**
+**The go/no-go check is done and it passed decisively. Promote this above P1.**
 
-The `.mat` files carry a `P` channel that **nothing currently reads**. Later
-Pacejka versions have explicit pressure terms.
+`P` was never read by any fit. It is not constant: every lateral spec pools
+**6-9 distinct inflation pressures**, spanning roughly 45-101 kPa (7-15 psi), a
+2x range. `corr(P, F_z)` across 429 segments is +0.028, so it is an independent
+variable and not a disguised load effect. `P` also shows the same gated-to-zero
+defect as `SL`, so it needs a `P > 1.0` filter.
 
-**Check before building:** does `P` vary meaningfully within and across runs?
-If it was held constant there is no signal and this stops immediately. If it
-drifted, it is unmodelled variance currently being absorbed as fit error.
+**MX already demonstrates the payoff.** Adding three linear pressure
+coefficients cut held-out MX error from 10.1% to 8.2%, up to 44% better on one
+tire, and `QSX3p` came out negative in all six tires (-0.034 to -0.052) with
+`QSX2p` positive in all six. Not noise — a consistent physical effect.
 
-This will not help geometry prediction. It could reduce per-tire error, which
-is what the shipped model actually uses.
+So every force family's residual currently contains unmodelled pressure
+variance. That is the most likely explanation for a meaningful slice of the
+3.2-18.3% band, and the fix is the same shape: linear pressure terms in the
+physics, as MF 6.x has.
+
+**Order of attack:** lateral first, since it is the best-constrained family and
+the one the lap sim leans on hardest. Then longitudinal, then the G families.
+Keep each extension out of `magic.py` — the owner owns that file — exactly as
+`MXP_*` is held in `fit_pipeline`.
+
+One caveat that cuts the other way: pressure scatter inside each spec inflates
+every parameter's uncertainty, which makes genuine between-tire differences
+*harder* to detect. So a "no geometry effect" result measured on
+pressure-pooled fits is partly confounded. Stratifying by pressure would make
+the geometry question cleaner too.
 
 ## P4. Optimisation quality
 
