@@ -515,3 +515,65 @@ closes, so backgrounding it discarded everything), then `nohup ... &` (the
 process dies with the tool's shell). The script also now calls
 `progress.keep_hot()`, since ~430 unattended fits is exactly the EcoQoS
 throttling case recorded above.
+
+## 2026-09-16 — MZ second pass: 5 of the 36 Q-parameters are dead code
+
+Ran the low-level -> high-level step as directed, 4 tires x 3 seeds in parallel
+on 12 cores. All 12 jobs converged. Two clean results, neither of them the one
+expected.
+
+**1. Multi-start buys nothing. P4 is answered, negatively.**
+
+Seed spread in final cost, over scale factors 0.5 / 1.0 / 2.0:
+
+| tire | cost | spread |
+|---|---|---|
+| 180X60_R20_60 | 9.199186e+07 | 1e-13 % |
+| 180X60_R20_70 | 8.283199e+07 | 7e-12 % |
+| 205X70_R20_70 | 1.319309e+08 | 9e-12 % |
+| 205X70_R20_80 | 6.604388e+07 | 1e-13 % |
+
+Every seed lands on the same optimum to 12 significant figures. So the flat
+regions noted for the force second passes are not multiple basins — there is one
+basin and the solver finds it. Do not spend more compute on multi-start for this
+family. `nfev` to get there varied wildly though (21 to 283, and up to 12,799 on
+some seeds), so cost is not predictable from the seed even though the answer is.
+
+**2. `QDZ5`, `QBZ4`, `QBZ7`, `QBZ8` and `QBZ11` are never used.**
+
+Every tire came back `jac_rank = 31/36` with `jac_cond = inf`. That is exact and
+identical across all four, which is the signature of structural rank deficiency
+rather than weak data. Parsing `second_pass_MZ`'s body confirms it: those five
+are unpacked from `x` and then never referenced anywhere in the residual.
+36 declared - 5 dead = 31, matching the observed rank exactly.
+
+So the optimiser has been carrying five parameters with literally zero effect on
+the residual. Same class of defect as the dead `x[8]` in `first_pass_MX` found on
+2026-09-09. They come out as `0.0` in the fitted output because the seed left
+them at zero, which is at least harmless and honest, but they are not fitted
+values and must not be read as such.
+
+Which rows use which: the `D_t` row uses `QDZ1-4`, the `D_r` row `QDZ6-11` --
+`QDZ5` falls in the gap. The `B_t` row uses `QBZ1,2,3,5,6` and the `B_r` row
+`QBZ9,10` -- `QBZ4,7,8,11` are the gap. Whether these are meant to be wired in
+(MF 5.2 does have terms for them) or deleted is the owner's call. Until then the
+effective parameter count for MZ is **31, not 36**.
+
+`jac_cond = inf` is therefore expected and is not evidence about `B_t`.
+
+**Still carried forward:** `B_t` remains set by its bound in 51% of the
+low-level segments, so `QBZ1/2/3/5/6` inherit that. These Q-parameters stay
+conditional on that bound.
+
+Artifacts: `outputs/mz_second_pass.parquet` (best per tire),
+`mz_second_pass_allseeds.parquet` (all 12), `outputs/specs/MZ_<tire>.npy`.
+
+**Process note.** Two mistakes of mine worth not repeating. First, the script
+bound `least_squares` via `from scipy.optimize import ...` at module top, before
+`progress.install()` patched `scipy.optimize.least_squares`, so no heartbeat
+printed for 23 minutes and I wrongly inferred the run was ~100x slower than it
+was. Measured directly, a residual evaluation is 0.058 s. Install the patch
+before binding the name, and call through the module attribute. Second, results
+were only written after all 12 jobs finished, so a shutdown mid-run would have
+discarded every completed job -- the log carries cost and rank but not the
+parameters. Long parallel runs need per-job checkpointing.
